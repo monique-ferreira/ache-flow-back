@@ -125,31 +125,37 @@ async def dialogflow_webhook(request: Request):
     intent = payload.get("intentInfo", {}).get("displayName", "")
     params = payload.get("sessionInfo", {}).get("parameters", {})
     
-    pessoa_nome = params.get("Pessoa")
+    funcionario_nome = params.get("Funcionario")
     status_tarefa_dialogflow = params.get("StatusTarefa")
     date_period_param = params.get("date-period")
     
     query_conditions = []
 
-    if pessoa_nome:
-        responsavel = await Funcionario.find_one(Funcionario.nome == pessoa_nome.capitalize())
+    if funcionario_nome:
+        nome_regex = re.compile(f"^{re.escape(funcionario_nome)}$", re.IGNORECASE)
+        responsavel = await Funcionario.find_one(Funcionario.nome.match(nome_regex))
         if responsavel:
             query_conditions.append(Tarefa.responsavel.id == responsavel.id)
         else:
             query_conditions.append(Tarefa.responsavel.id == PydanticObjectId("000000000000000000000000"))
 
     if status_tarefa_dialogflow:
+        status_normalizado = status_tarefa_dialogflow.capitalize()
+        
         status_map = {
             "Em Andamento": StatusTarefa.EM_ANDAMENTO,
             "Congelada": StatusTarefa.CONGELADA,
             "Não Iniciada": StatusTarefa.NAO_INICIADA,
             "Concluída": StatusTarefa.CONCLUIDA,
         }
-        if status_tarefa_dialogflow == "Atrasada":
+        
+        # --- COMPARAÇÃO CORRIGIDA AQUI ---
+        if status_normalizado == "Atrasada":
             query_conditions.append(Tarefa.prazo < date.today())
             query_conditions.append(Tarefa.status != StatusTarefa.CONCLUIDA)
-        elif status_tarefa_dialogflow in status_map:
-            query_conditions.append(Tarefa.status == status_map[status_tarefa_dialogflow])
+        # --- E AQUI ---
+        elif status_normalizado in status_map:
+            query_conditions.append(Tarefa.status == status_map[status_normalizado])
 
     if date_period_param:
         start_str = date_period_param.get("startDate")
