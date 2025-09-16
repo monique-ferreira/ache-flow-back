@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Body, Request
-from typing import List
+from typing import List, Optional
 from beanie import PydanticObjectId
 from contextlib import asynccontextmanager
 from datetime import date, datetime
@@ -23,6 +23,8 @@ app = FastAPI(
     version="2.0.0"
 )
 
+# --- Endpoints de Funcionários ---
+
 @app.post("/funcionarios", response_model=Funcionario, tags=["Funcionários"])
 async def criar_funcionario(funcionario_data: FuncionarioCreate = Body(...)):
     funcionario_existente = await Funcionario.find_one(Funcionario.email == funcionario_data.email)
@@ -37,6 +39,16 @@ async def criar_funcionario(funcionario_data: FuncionarioCreate = Body(...)):
 async def listar_funcionarios():
     funcionarios = await Funcionario.find_all().to_list()
     return funcionarios
+
+# --- NOVO ENDPOINT ADICIONADO ---
+@app.get("/funcionarios/{funcionario_id}", response_model=Funcionario, tags=["Funcionários"])
+async def obter_funcionario(funcionario_id: PydanticObjectId):
+    funcionario = await Funcionario.get(funcionario_id)
+    if not funcionario:
+        raise HTTPException(status_code=404, detail="Funcionário não encontrado.")
+    return funcionario
+
+# --- Endpoints de Projetos ---
 
 @app.post("/projetos", response_model=Projeto, tags=["Projetos"])
 async def criar_projeto(projeto_data: ProjetoCreate = Body(...)):
@@ -63,6 +75,8 @@ async def obter_projeto(projeto_id: PydanticObjectId):
     if not projeto:
         raise HTTPException(status_code=404, detail="Projeto não encontrado.")
     return projeto
+
+# --- Endpoints de Tarefas ---
 
 @app.post("/tarefas", response_model=Tarefa, tags=["Tarefas"])
 async def criar_tarefa(tarefa_data: TarefaCreate = Body(...)):
@@ -94,11 +108,24 @@ async def listar_tarefas_do_projeto(projeto_id: PydanticObjectId):
     tarefas = await Tarefa.find(Tarefa.projeto.id == projeto_id, fetch_links=True).to_list()
     return tarefas
 
+# --- NOVO ENDPOINT ADICIONADO ---
+@app.get("/tarefas/{tarefa_id}", response_model=Tarefa, tags=["Tarefas"])
+async def obter_tarefa(tarefa_id: PydanticObjectId):
+    tarefa = await Tarefa.get(tarefa_id, fetch_links=True)
+    if not tarefa:
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada.")
+    return tarefa
+
+# --- Endpoints de Calendário ---
+
 @app.post("/calendario", response_model=Calendario, tags=["Calendário"])
 async def agendar_evento_calendario(calendario_data: CalendarioCreate = Body(...)):
     projeto_link = None
     tarefa_link = None
 
+    projeto_id: Optional[str] = None
+    tarefa_id: Optional[str] = None
+    
     if calendario_data.projeto_id:
         projeto_id = PydanticObjectId(calendario_data.projeto_id)
         projeto_link = await Projeto.get(projeto_id)
@@ -119,6 +146,16 @@ async def agendar_evento_calendario(calendario_data: CalendarioCreate = Body(...
     await evento_calendario.insert()
     return evento_calendario
 
+# --- NOVO ENDPOINT ADICIONADO ---
+@app.get("/calendario/{calendario_id}", response_model=Calendario, tags=["Calendário"])
+async def obter_evento_calendario(calendario_id: PydanticObjectId):
+    evento = await Calendario.get(calendario_id, fetch_links=True)
+    if not evento:
+        raise HTTPException(status_code=404, detail="Evento do calendário não encontrado.")
+    return evento
+
+# --- Endpoint do Webhook ---
+
 @app.post("/webhook", tags=["Dialogflow"])
 async def dialogflow_webhook(request: Request):
     payload = await request.json()
@@ -135,15 +172,13 @@ async def dialogflow_webhook(request: Request):
     if funcionario_nome_dialogflow:
         responsavel = None
         
-        # --- LÓGICA DE BUSCA DE NOME FINAL ---
-        # Tenta buscar pelo nome completo primeiro, depois vai tentando combinações
         name_parts = funcionario_nome_dialogflow.split()
         for i in range(len(name_parts), 0, -1):
             current_name_to_check = " ".join(name_parts[:i])
             nome_regex = re.compile(f"^{re.escape(current_name_to_check)}$", re.IGNORECASE)
             responsavel = await Funcionario.find_one({"nome": nome_regex})
             if responsavel:
-                break # Encontrou, pode parar de procurar
+                break
 
         if responsavel:
             query_conditions.append(Tarefa.responsavel.id == responsavel.id)
