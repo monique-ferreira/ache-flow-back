@@ -125,14 +125,17 @@ async def dialogflow_webhook(request: Request):
     intent = payload.get("intentInfo", {}).get("displayName", "")
     params = payload.get("sessionInfo", {}).get("parameters", {})
     
-    funcionario_nome = params.get("Funcionario")
-    status_tarefa_dialogflow = params.get("StatusTarefa")
+    # --- CORREÇÃO 1: Usar nomes de parâmetros em minúsculo ---
+    funcionario_nome_dialogflow = params.get("funcionario")
+    status_tarefa_dialogflow = params.get("statustarefa")
     date_period_param = params.get("date-period")
     
     query_conditions = []
 
-    if funcionario_nome:
-        nome_regex = re.compile(f"^{re.escape(funcionario_nome)}$", re.IGNORECASE)
+    # --- CORREÇÃO 2: Lógica para buscar pelo primeiro nome ---
+    if funcionario_nome_dialogflow:
+        primeiro_nome = funcionario_nome_dialogflow.split()[0]
+        nome_regex = re.compile(f"^{re.escape(primeiro_nome)}$", re.IGNORECASE)
         responsavel = await Funcionario.find_one(Funcionario.nome.match(nome_regex))
         if responsavel:
             query_conditions.append(Tarefa.responsavel.id == responsavel.id)
@@ -140,20 +143,21 @@ async def dialogflow_webhook(request: Request):
             query_conditions.append(Tarefa.responsavel.id == PydanticObjectId("000000000000000000000000"))
 
     if status_tarefa_dialogflow:
-        status_normalizado = status_tarefa_dialogflow.capitalize()
+        status_normalizado = ""
+        # Garante que o valor não é nulo antes de chamar capitalize
+        if isinstance(status_tarefa_dialogflow, str):
+            status_normalizado = status_tarefa_dialogflow.capitalize()
         
         status_map = {
-            "Em Andamento": StatusTarefa.EM_ANDAMENTO,
+            "Em andamento": StatusTarefa.EM_ANDAMENTO,
             "Congelada": StatusTarefa.CONGELADA,
-            "Não Iniciada": StatusTarefa.NAO_INICIADA,
+            "Não iniciada": StatusTarefa.NAO_INICIADA,
             "Concluída": StatusTarefa.CONCLUIDA,
         }
         
-        # --- COMPARAÇÃO CORRIGIDA AQUI ---
         if status_normalizado == "Atrasada":
             query_conditions.append(Tarefa.prazo < date.today())
             query_conditions.append(Tarefa.status != StatusTarefa.CONCLUIDA)
-        # --- E AQUI ---
         elif status_normalizado in status_map:
             query_conditions.append(Tarefa.status == status_map[status_normalizado])
 
@@ -177,11 +181,17 @@ async def dialogflow_webhook(request: Request):
             resposta_texto = f"Encontrei as seguintes tarefas: {', '.join(nomes_tarefas)}."
 
     elif intent == "ContarTarefas":
-        contagem = await Tarefa.find(*query_conditions).count()
+        tarefas_encontradas = await Tarefa.find(*query_conditions, fetch_links=True).to_list()
+        contagem = len(tarefas_encontradas) # A contagem é o tamanho da lista
+
         if contagem == 0:
             resposta_texto = "Não encontrei nenhuma tarefa com esses critérios."
         elif contagem == 1:
-            resposta_texto = f"Encontrei 1 tarefa com esses critérios."
+            nomes_tarefas = [f"'{t.nome}' (Responsável: {t.responsavel.nome})" for t in tarefas_encontradas]
+            resposta_texto = f"Encontrei 1 tarefa com esses critérios: {nomes_tarefas[0]}."
+        elif contagem <= 3:
+            nomes_tarefas = [f"'{t.nome}'" for t in tarefas_encontradas]
+            resposta_texto = f"Encontrei um total de {contagem} tarefas: {', '.join(nomes_tarefas)}."
         else:
             resposta_texto = f"Encontrei um total de {contagem} tarefas com esses critérios."
 
