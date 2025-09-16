@@ -126,18 +126,18 @@ async def dialogflow_webhook(request: Request):
     intent = payload.get("intentInfo", {}).get("displayName", "")
     params = payload.get("sessionInfo", {}).get("parameters", {})
     
-    # --- CORREÇÃO 1: Usar nomes de parâmetros em minúsculo ---
     funcionario_nome_dialogflow = params.get("funcionario")
     status_tarefa_dialogflow = params.get("statustarefa")
     date_period_param = params.get("date-period")
     
     query_conditions = []
 
-    # --- CORREÇÃO 2: Lógica para buscar pelo primeiro nome ---
     if funcionario_nome_dialogflow:
         primeiro_nome = funcionario_nome_dialogflow.split()[0]
         nome_regex = re.compile(f"^{re.escape(primeiro_nome)}$", re.IGNORECASE)
-        responsavel = await Funcionario.find_one(Funcionario.nome.match(nome_regex))
+        
+        responsavel = await Funcionario.find_one({"nome": nome_regex})
+
         if responsavel:
             query_conditions.append(Tarefa.responsavel.id == responsavel.id)
         else:
@@ -145,7 +145,6 @@ async def dialogflow_webhook(request: Request):
 
     if status_tarefa_dialogflow:
         status_normalizado = ""
-        # Garante que o valor não é nulo antes de chamar capitalize
         if isinstance(status_tarefa_dialogflow, str):
             status_normalizado = status_tarefa_dialogflow.capitalize()
         
@@ -183,8 +182,7 @@ async def dialogflow_webhook(request: Request):
 
     elif intent == "ContarTarefas":
         tarefas_encontradas = await Tarefa.find(*query_conditions, fetch_links=True).to_list()
-        contagem = len(tarefas_encontradas) # A contagem é o tamanho da lista
-
+        contagem = len(tarefas_encontradas)
         if contagem == 0:
             resposta_texto = "Não encontrei nenhuma tarefa com esses critérios."
         elif contagem == 1:
