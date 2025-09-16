@@ -171,7 +171,6 @@ async def dialogflow_webhook(request: Request):
 
     if funcionario_nome_dialogflow:
         responsavel = None
-        
         name_parts = funcionario_nome_dialogflow.split()
         for i in range(len(name_parts), 0, -1):
             current_name_to_check = " ".join(name_parts[:i])
@@ -241,11 +240,18 @@ async def dialogflow_webhook(request: Request):
             "messages": [
                 {"text": {"text": [resposta_texto]}}
             ]
+        },
+        "sessionInfo": {
+            "parameters": {
+                "funcionario": None,
+                "statustarefa": None,
+                "date-period": None
+            }
         }
     }
     
-    return response_json
-
+    return response_json  
+  
 @app.get("/", include_in_schema=False)
 async def root():
     return {"message": "Bem-vindo à API v2! Acesse /docs para a documentação."}
