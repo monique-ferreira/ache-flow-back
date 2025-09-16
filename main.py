@@ -2,11 +2,12 @@ from fastapi import FastAPI, HTTPException, Body
 from typing import List
 from beanie import PydanticObjectId
 from contextlib import asynccontextmanager
+from datetime import date, datetime
 
 from database import db
 from models import (
     Funcionario, Projeto, Tarefa, Calendario,
-    FuncionarioCreate, ProjetoCreate, TarefaCreate, CalendarioCreate
+    FuncionarioCreate, ProjetoCreate, TarefaCreate, CalendarioCreate, StatusTarefa
 )
 
 @asynccontextmanager
@@ -116,6 +117,77 @@ async def agendar_evento_calendario(calendario_data: CalendarioCreate = Body(...
     )
     await evento_calendario.insert()
     return evento_calendario
+
+@app.post("/webhook", tags=["Dialogflow"])
+async def dialogflow_webhook(request: Request):
+    payload = await request.json()
+    
+    intent = payload.get("intentInfo", {}).get("displayName", "")
+    params = payload.get("sessionInfo", {}).get("parameters", {})
+    
+    pessoa_nome = params.get("Pessoa")
+    status_tarefa_dialogflow = params.get("StatusTarefa")
+    date_period_param = params.get("date-period")
+    
+    query_conditions = []
+
+    if pessoa_nome:
+        responsavel = await Funcionario.find_one(Funcionario.nome == pessoa_nome.capitalize())
+        if responsavel:
+            query_conditions.append(Tarefa.responsavel.id == responsavel.id)
+        else:
+            query_conditions.append(Tarefa.responsavel.id == PydanticObjectId("000000000000000000000000"))
+
+    if status_tarefa_dialogflow:
+        status_map = {
+            "Em Andamento": StatusTarefa.EM_ANDAMENTO,
+            "Congelada": StatusTarefa.CONGELADA,
+            "Não Iniciada": StatusTarefa.NAO_INICIADA,
+            "Concluída": StatusTarefa.CONCLUIDA,
+        }
+        if status_tarefa_dialogflow == "Atrasada":
+            query_conditions.append(Tarefa.prazo < date.today())
+            query_conditions.append(Tarefa.status != StatusTarefa.CONCLUIDA)
+        elif status_tarefa_dialogflow in status_map:
+            query_conditions.append(Tarefa.status == status_map[status_tarefa_dialogflow])
+
+    if date_period_param:
+        start_str = date_period_param.get("startDate")
+        end_str = date_period_param.get("endDate")
+        if start_str and end_str:
+            data_inicio = datetime.fromisoformat(start_str).date()
+            data_fim = datetime.fromisoformat(end_str).date()
+            query_conditions.append(Tarefa.prazo >= data_inicio)
+            query_conditions.append(Tarefa.prazo <= data_fim)
+
+    resposta_texto = "Desculpe, não consegui processar sua solicitação."
+
+    if intent == "ListarTarefas":
+        tarefas_encontradas = await Tarefa.find(*query_conditions, fetch_links=True).to_list()
+        if not tarefas_encontradas:
+            resposta_texto = "Não encontrei nenhuma tarefa com esses critérios."
+        else:
+            nomes_tarefas = [f"'{t.nome}' (Responsável: {t.responsavel.nome})" for t in tarefas_encontradas]
+            resposta_texto = f"Encontrei as seguintes tarefas: {', '.join(nomes_tarefas)}."
+
+    elif intent == "ContarTarefas":
+        contagem = await Tarefa.find(*query_conditions).count()
+        if contagem == 0:
+            resposta_texto = "Não encontrei nenhuma tarefa com esses critérios."
+        elif contagem == 1:
+            resposta_texto = f"Encontrei 1 tarefa com esses critérios."
+        else:
+            resposta_texto = f"Encontrei um total de {contagem} tarefas com esses critérios."
+
+    response_json = {
+        "fulfillment_response": {
+            "messages": [
+                {"text": {"text": [resposta_texto]}}
+            ]
+        }
+    }
+    
+    return response_json
 
 @app.get("/", include_in_schema=False)
 async def root():
