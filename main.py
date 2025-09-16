@@ -1,115 +1,122 @@
-# main.py
 from fastapi import FastAPI, HTTPException, Body
 from typing import List
 from beanie import PydanticObjectId
+from contextlib import asynccontextmanager
 
-# Importa a instância do banco de dados e os modelos
 from database import db
-from models import Premissa, Pessoa, Evento, Calculadora
-from models import PremissaCreate, PessoaCreate, EventoCreate, CalculadoraCreate
-
-# Cria a aplicação FastAPI
-app = FastAPI(
-    title="API de Ações e Eventos",
-    description="Backend baseado no diagrama UML para gerenciar premissas, pessoas, eventos e agendamentos.",
-    version="1.0.0"
+from models import (
+    Funcionario, Projeto, Tarefa, Calendario,
+    FuncionarioCreate, ProjetoCreate, TarefaCreate, CalendarioCreate
 )
 
-# --- Eventos de Ciclo de Vida da Aplicação ---
-
-@app.on_event("startup")
-async def start_database():
-    """
-    Esta função é executada quando a aplicação inicia.
-    Ela chama nosso inicializador de banco de dados.
-    """
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     await db.initialize()
+    yield
 
-# --- Endpoints da API ---
+app = FastAPI(
+    lifespan=lifespan,
+    title="API de Gerenciamento de Projetos e Tarefas",
+    description="Backend refatorado para gerenciar funcionários, projetos, tarefas e calendário.",
+    version="2.0.0"
+)
 
-@app.post("/premissas", response_model=Premissa, tags=["Premissas"])
-async def criar_premissa(premissa_data: PremissaCreate = Body(...)):
-    """
-    Endpoint para 'criarFremi(as)'.
-    Recebe os dados de uma nova premissa e a insere no banco de dados.
-    """
-    premissa = Premissa(**premissa_data.dict())
-    await premissa.insert()
-    return premissa
-
-@app.post("/pessoas", response_model=Pessoa, tags=["Pessoas"])
-async def cadastrar_pessoa(pessoa_data: PessoaCreate = Body(...)):
-    """
-    Endpoint para 'cadastrarPessoa(is)'.
-    Recebe os dados de uma pessoa e o ID da premissa que a originou.
-    Cria a pessoa e estabelece o vínculo com a premissa.
-    """
-    # Verifica se a premissa informada existe no banco de dados
-    premissa_id = PydanticObjectId(pessoa_data.premissa_id)
-    premissa_origem = await Premissa.get(premissa_id)
-    if not premissa_origem:
-        raise HTTPException(status_code=404, detail="Premissa não encontrada.")
+@app.post("/funcionarios", response_model=Funcionario, tags=["Funcionários"])
+async def criar_funcionario(funcionario_data: FuncionarioCreate = Body(...)):
+    funcionario_existente = await Funcionario.find_one(Funcionario.email == funcionario_data.email)
+    if funcionario_existente:
+        raise HTTPException(status_code=400, detail="Um funcionário com este email já existe.")
     
-    # Cria a instância da pessoa, já vinculando a premissa encontrada
-    # Usamos o .dict() para converter o modelo Pydantic em um dicionário
-    pessoa = Pessoa(
-        **pessoa_data.dict(exclude={"premissa_id"}), # Exclui o premissa_id para não duplicar
-        premissa_original=premissa_origem 
+    funcionario = Funcionario(**funcionario_data.dict())
+    await funcionario.insert()
+    return funcionario
+
+@app.get("/funcionarios", response_model=List[Funcionario], tags=["Funcionários"])
+async def listar_funcionarios():
+    funcionarios = await Funcionario.find_all().to_list()
+    return funcionarios
+
+@app.post("/projetos", response_model=Projeto, tags=["Projetos"])
+async def criar_projeto(projeto_data: ProjetoCreate = Body(...)):
+    responsavel_id = PydanticObjectId(projeto_data.responsavel_id)
+    responsavel = await Funcionario.get(responsavel_id)
+    if not responsavel:
+        raise HTTPException(status_code=404, detail="Funcionário responsável não encontrado.")
+    
+    projeto = Projeto(
+        **projeto_data.dict(exclude={"responsavel_id"}),
+        responsavel=responsavel
     )
-    await pessoa.insert()
-    return pessoa
+    await projeto.insert()
+    return projeto
 
-@app.post("/eventos", response_model=Evento, tags=["Eventos"])
-async def criar_evento(evento_data: EventoCreate = Body(...)):
-    """
-    Endpoint para 'criarEvento(is)'.
-    Cria um novo evento no sistema.
-    """
-    evento = Evento(**evento_data.dict())
-    await evento.insert()
-    return evento
+@app.get("/projetos", response_model=List[Projeto], tags=["Projetos"])
+async def listar_projetos():
+    projetos = await Projeto.find_all().to_list()
+    return projetos
 
-@app.post("/eventos/{evento_id}/vincular/{pessoa_id}", response_model=Evento, tags=["Eventos"])
-async def vincular_pessoa_ao_evento(evento_id: PydanticObjectId, pessoa_id: PydanticObjectId):
-    """
-    Endpoint para 'vincularEvento(is)'.
-    Estabelece uma relação Muitos-para-Muitos entre uma Pessoa e um Evento.
-    """
-    evento = await Evento.get(evento_id)
-    pessoa = await Pessoa.get(pessoa_id)
+@app.get("/projetos/{projeto_id}", response_model=Projeto, tags=["Projetos"])
+async def obter_projeto(projeto_id: PydanticObjectId):
+    projeto = await Projeto.get(projeto_id, fetch_links=True)
+    if not projeto:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+    return projeto
 
-    if not evento or not pessoa:
-        raise HTTPException(status_code=404, detail="Evento ou Pessoa não encontrado(a).")
-    
-    # Adiciona a referência da pessoa ao evento e vice-versa para manter a consistência
-    # O Beanie é inteligente e só adicionará se o link já não existir
-    evento.pessoas_vinculadas.append(pessoa)
-    pessoa.eventos_vinculados.append(evento)
+@app.post("/tarefas", response_model=Tarefa, tags=["Tarefas"])
+async def criar_tarefa(tarefa_data: TarefaCreate = Body(...)):
+    projeto_id = PydanticObjectId(tarefa_data.projeto_id)
+    responsavel_id = PydanticObjectId(tarefa_data.responsavel_id)
 
-    # Salva as alterações nos dois documentos
-    await evento.save()
-    await pessoa.save()
+    projeto = await Projeto.get(projeto_id)
+    if not projeto:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+        
+    responsavel = await Funcionario.get(responsavel_id)
+    if not responsavel:
+        raise HTTPException(status_code=404, detail="Funcionário responsável não encontrado.")
 
-    return evento
-
-@app.post("/agendamentos", response_model=Calculadora, tags=["Agendamentos"])
-async def agendar_evento(agendamento_data: CalculadoraCreate = Body(...)):
-    """
-    Endpoint para 'agendarEvento()'.
-    Cria um agendamento (Calculadora) baseado em um evento existente.
-    """
-    evento_id = PydanticObjectId(agendamento_data.evento_id)
-    evento_original = await Evento.get(evento_id)
-    if not evento_original:
-        raise HTTPException(status_code=404, detail="Evento a ser agendado não encontrado.")
-    
-    agendamento = Calculadora(
-        **agendamento_data.dict(exclude={"evento_id"}),
-        evento_agendado=evento_original
+    tarefa = Tarefa(
+        **tarefa_data.dict(exclude={"projeto_id", "responsavel_id"}),
+        projeto=projeto,
+        responsavel=responsavel
     )
-    await agendamento.insert()
-    return agendamento
+    await tarefa.insert()
+    return tarefa
+
+@app.get("/projetos/{projeto_id}/tarefas", response_model=List[Tarefa], tags=["Tarefas"])
+async def listar_tarefas_do_projeto(projeto_id: PydanticObjectId):
+    projeto = await Projeto.get(projeto_id)
+    if not projeto:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+    
+    tarefas = await Tarefa.find(Tarefa.projeto.id == projeto_id, fetch_links=True).to_list()
+    return tarefas
+
+@app.post("/calendario", response_model=Calendario, tags=["Calendário"])
+async def agendar_evento_calendario(calendario_data: CalendarioCreate = Body(...)):
+    projeto_link = None
+    tarefa_link = None
+
+    if calendario_data.projeto_id:
+        projeto_id = PydanticObjectId(calendario_data.projeto_id)
+        projeto_link = await Projeto.get(projeto_id)
+        if not projeto_link:
+            raise HTTPException(status_code=404, detail="Projeto para agendamento não encontrado.")
+
+    if calendario_data.tarefa_id:
+        tarefa_id = PydanticObjectId(calendario_data.tarefa_id)
+        tarefa_link = await Tarefa.get(tarefa_id)
+        if not tarefa_link:
+            raise HTTPException(status_code=404, detail="Tarefa para agendamento não encontrada.")
+
+    evento_calendario = Calendario(
+        **calendario_data.dict(exclude={"projeto_id", "tarefa_id"}),
+        projeto=projeto_link,
+        tarefa=tarefa_link
+    )
+    await evento_calendario.insert()
+    return evento_calendario
 
 @app.get("/", include_in_schema=False)
 async def root():
-    return {"message": "Bem-vindo à API! Acesse /docs para ver a documentação interativa."}
+    return {"message": "Bem-vindo à API v2! Acesse /docs para a documentação."}
