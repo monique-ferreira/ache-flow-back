@@ -133,11 +133,9 @@ async def dialogflow_webhook(request: Request):
     query_conditions = []
 
     if funcionario_nome_dialogflow:
-        primeiro_nome = funcionario_nome_dialogflow.split()[0]
-        nome_regex = re.compile(f"^{re.escape(primeiro_nome)}$", re.IGNORECASE)
-        
+        nome_regex = re.compile(f"^{re.escape(funcionario_nome_dialogflow)}", re.IGNORECASE)
         responsavel = await Funcionario.find_one({"nome": nome_regex})
-
+        
         if responsavel:
             query_conditions.append(Tarefa.responsavel.id == responsavel.id)
         else:
