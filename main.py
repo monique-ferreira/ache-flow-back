@@ -135,11 +135,11 @@ async def dialogflow_webhook(request: Request):
     if funcionario_nome_dialogflow:
         responsavel = None
         
-        # Estratégia 1: Tentar busca pelo nome completo (para casos como "Ana Luiza")
-        nome_completo_regex = re.compile(f"^{re.escape(funcionario_nome_dialogflow)}$", re.IGNORECASE)
-        responsavel = await Funcionario.find_one({"nome": nome_completo_regex})
+        # Estratégia 1: Tentar busca pelo nome exato como está no banco (para "Ana Luiza")
+        nome_exato_regex = re.compile(f"^{re.escape(funcionario_nome_dialogflow)}$", re.IGNORECASE)
+        responsavel = await Funcionario.find_one({"nome": nome_exato_regex})
 
-        # Estratégia 2: Se a primeira falhar, tentar pelo primeiro nome (para casos como "Monique Ferreira")
+        # Estratégia 2: Se falhar, tentar pelo primeiro nome (para "Monique Ferreira")
         if not responsavel:
             primeiro_nome = funcionario_nome_dialogflow.split()[0]
             primeiro_nome_regex = re.compile(f"^{re.escape(primeiro_nome)}$", re.IGNORECASE)
