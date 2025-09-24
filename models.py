@@ -20,9 +20,9 @@ class Funcionario(Document):
     nome: str
     sobrenome: str
     email: EmailStr
-    senha: str # Em um ambiente real, isso deveria ser um hash!
+    senha: str
     cargo: Optional[str] = None
-    departamento: Optional[str] = None # NOVO CAMPO ADICIONADO
+    departamento: Optional[str] = None
     fotoPerfil: Optional[str] = None
     dataCadastro: datetime = Field(default_factory=datetime.now)
 
@@ -46,7 +46,7 @@ class Tarefa(Document):
     prioridade: PrioridadeTarefa = PrioridadeTarefa.MEDIA
     status: StatusTarefa = StatusTarefa.NAO_INICIADA
     dataCriacao: datetime = Field(default_factory=datetime.now)
-    dataConclusao: Optional[date] = None # NOVO CAMPO ADICIONADO
+    dataConclusao: Optional[date] = None
     prazo: date
     projeto: Link[Projeto]
     responsavel: Link[Funcionario]
@@ -54,8 +54,17 @@ class Tarefa(Document):
     class Settings:
         name = "tarefas"
 
-# --- Models para Update (Boas práticas para o CRUD) ---
+# --- CLASSE QUE ESTAVA FALTANDO ---
+class Calendario(Document):
+    tipoEvento: str
+    data_hora_evento: datetime
+    projeto: Optional[Link[Projeto]] = None
+    tarefa: Optional[Link[Tarefa]] = None
 
+    class Settings:
+        name = "calendario"
+
+# --- Models para Update ---
 class FuncionarioUpdate(BaseModel):
     nome: Optional[str] = None
     sobrenome: Optional[str] = None
@@ -79,17 +88,15 @@ class TarefaUpdate(BaseModel):
     status: Optional[StatusTarefa] = None
     prazo: Optional[date] = None
     responsavel_id: Optional[str] = None
-    # O projeto de uma tarefa geralmente não muda, mas poderia ser adicionado se necessário
 
-# --- Models Originais para Create ---
-
+# --- Models para Create ---
 class FuncionarioCreate(BaseModel):
     nome: str
     sobrenome: str
     email: EmailStr
     senha: str
     cargo: Optional[str] = None
-    departamento: Optional[str] = None # CAMPO ADICIONADO
+    departamento: Optional[str] = None
     fotoPerfil: Optional[str] = None
 
 class ProjetoCreate(BaseModel):
@@ -109,6 +116,14 @@ class TarefaCreate(BaseModel):
     status: StatusTarefa = StatusTarefa.NAO_INICIADA
     prazo: date
 
+# --- MODEL QUE ESTAVA FALTANDO ---
+class CalendarioCreate(BaseModel):
+    tipoEvento: str
+    data_hora_evento: datetime
+    projeto_id: Optional[str] = None
+    tarefa_id: Optional[str] = None
+
+# --- Models para Autenticação ---
 class Token(BaseModel):
     access_token: str
     token_type: str
