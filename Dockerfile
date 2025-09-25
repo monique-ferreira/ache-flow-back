@@ -1,3 +1,5 @@
+# Dockerfile
+
 # 1. Usar uma imagem base oficial do Python
 FROM python:3.11-slim-bullseye
 
@@ -14,11 +16,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 4. Copiar o resto do código do seu projeto para dentro do contêiner
 COPY . .
 
-# 5. Expor a porta 8000 para que a aplicação possa ser acessada
+# 5. Expor a porta 8000
 # (O Render irá mapear isso para a porta 443 (HTTPS) automaticamente)
 EXPOSE 8000
 
 # 6. Comando para iniciar a aplicação quando o contêiner for executado
-# Usamos o Gunicorn para gerenciar 4 workers Uvicorn. É o padrão para produção.
+# Usamos o Gunicorn para gerenciar 4 workers Uvicorn em produção.
 # O host 0.0.0.0 é necessário para que a aplicação seja acessível de fora do contêiner.
 CMD ["gunicorn", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "main:app", "--bind", "0.0.0.0:8000"]
