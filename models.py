@@ -54,7 +54,6 @@ class Tarefa(Document):
     class Settings:
         name = "tarefas"
 
-# --- CLASSE QUE ESTAVA FALTANDO ---
 class Calendario(Document):
     tipoEvento: str
     data_hora_evento: datetime
@@ -89,6 +88,12 @@ class TarefaUpdate(BaseModel):
     prazo: Optional[date] = None
     responsavel_id: Optional[str] = None
 
+class CalendarioUpdate(BaseModel):
+    tipoEvento: Optional[str] = None
+    data_hora_evento: Optional[datetime] = None
+    projeto_id: Optional[str] = None
+    tarefa_id: Optional[str] = None
+
 # --- Models para Create ---
 class FuncionarioCreate(BaseModel):
     nome: str
@@ -116,7 +121,6 @@ class TarefaCreate(BaseModel):
     status: StatusTarefa = StatusTarefa.NAO_INICIADA
     prazo: date
 
-# --- MODEL QUE ESTAVA FALTANDO ---
 class CalendarioCreate(BaseModel):
     tipoEvento: str
     data_hora_evento: datetime
