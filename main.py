@@ -31,6 +31,14 @@ app = FastAPI(
     version="5.0.0"
 )
 
+origins = [
+    "http://localhost",
+    "http://localhost:8000",
+    "http://localhost:3000",
+    "https://ache-flow.vercel.app/",
+    "https://ache-flow.vercel.app",
+]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
