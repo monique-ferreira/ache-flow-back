@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from datetime import date, datetime
 import re
 from jose import JWTError, jwt
+from fastapi.middleware.cors import CORSMiddleware
 
 # Importa a lógica de autenticação e os modelos
 import auth
@@ -28,6 +29,14 @@ app = FastAPI(
     title="API de Gerenciamento de Projetos e Tarefas",
     description="API com CRUD completo para todos os recursos e autenticação.",
     version="5.0.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # --- ENDPOINT DE AUTENTICAÇÃO ---
