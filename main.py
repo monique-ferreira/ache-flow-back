@@ -1,6 +1,7 @@
 # main.py
-from fastapi import FastAPI, HTTPException, Body, Query, Depends, status, Request
+from fastapi import FastAPI, HTTPException, Body, Query, Depends, status, Request, UploadFile, File
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.responses import StreamingResponse
 from typing import List, Optional
 from beanie import PydanticObjectId, operators
 from contextlib import asynccontextmanager
@@ -8,6 +9,8 @@ from datetime import date, datetime
 import re
 from jose import JWTError, jwt
 from fastapi.middleware.cors import CORSMiddleware
+import pandas as pd
+import io
 
 # Importa a lógica de autenticação e os modelos
 import auth
@@ -16,7 +19,8 @@ from models import (
     Funcionario, Projeto, Tarefa, Calendario, Token,
     FuncionarioCreate, ProjetoCreate, TarefaCreate, CalendarioCreate,
     FuncionarioUpdate, ProjetoUpdate, TarefaUpdate, CalendarioUpdate,
-    StatusTarefa
+    StatusTarefa,
+    PrioridadeTarefa
 )
 
 @asynccontextmanager
@@ -269,6 +273,133 @@ async def deletar_evento_calendario(id: PydanticObjectId, current_user: Funciona
         raise HTTPException(status_code=404, detail="Evento não encontrado.")
     await evento.delete()
     return None
+
+# --- EXPORTAÇÃO E IMPORTAÇÃO DE TAREFAS (EXCEL) ---
+
+@app.get("/tarefas/exportar", tags=["Tarefas"], summary="Exportar todas as tarefas para um arquivo Excel")
+async def exportar_tarefas_excel(current_user: Funcionario = Depends(auth.get_usuario_logado)):
+    """
+    Gera um arquivo .xlsx com todas as tarefas cadastradas no banco de dados.
+    """
+    tarefas = await Tarefa.find_all(fetch_links=True).to_list()
+    if not tarefas:
+        raise HTTPException(status_code=404, detail="Nenhuma tarefa encontrada para exportar.")
+
+    # Prepara os dados para o DataFrame
+    tarefas_data = []
+    for tarefa in tarefas:
+        tarefas_data.append({
+            "ID da Tarefa": str(tarefa.id),
+            "Nome da Tarefa": tarefa.nome,
+            "Descrição": tarefa.descricao,
+            "Prioridade": tarefa.prioridade.value,
+            "Status": tarefa.status.value,
+            "Prazo": tarefa.prazo.isoformat(),
+            "Projeto": tarefa.projeto.nome if tarefa.projeto else None,
+            "Responsável": f"{tarefa.responsavel.nome} {tarefa.responsavel.sobrenome}" if tarefa.responsavel else None,
+            "Email Responsável": tarefa.responsavel.email if tarefa.responsavel else None,
+            # Novos campos
+            "Número": tarefa.numero,
+            "Classificação": tarefa.classificacao,
+            "Fase": tarefa.fase,
+            "Condição": tarefa.condicao,
+            "Documento de Referência": tarefa.documento_referencia,
+            "Concluído": tarefa.concluido
+        })
+
+    df = pd.DataFrame(tarefas_data)
+
+    # Cria o arquivo Excel em memória
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Tarefas')
+    output.seek(0)
+
+    headers = {
+        'Content-Disposition': 'attachment; filename="tarefas.xlsx"'
+    }
+
+    return StreamingResponse(output, headers=headers, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@app.post("/tarefas/importar", tags=["Tarefas"], summary="Importar tarefas de um arquivo Excel")
+async def importar_tarefas_excel(file: UploadFile = File(...), current_user: Funcionario = Depends(auth.get_usuario_logado)):
+    """
+    Cria novas tarefas a partir de um arquivo .xlsx.
+    O arquivo Excel deve conter as colunas: 'Nome da Tarefa', 'Prazo', 'Nome do Projeto', 'Email Responsável'.
+    Outras colunas como 'Descrição', 'Prioridade', e os novos campos são opcionais.
+    """
+    if not file.filename.endswith('.xlsx'):
+        raise HTTPException(status_code=400, detail="Formato de arquivo inválido. Por favor, envie um arquivo .xlsx.")
+
+    try:
+        contents = await file.read()
+        df = pd.read_excel(io.BytesIO(contents))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Erro ao ler o arquivo Excel: {e}")
+
+    tarefas_criadas = 0
+    erros = []
+
+    for index, row in df.iterrows():
+        try:
+            # Validações mínimas
+            if not all(k in row for k in ['Nome da Tarefa', 'Prazo', 'Nome do Projeto', 'Email Responsável']):
+                erros.append(f"Linha {index + 2}: Faltam colunas obrigatórias.")
+                continue
+
+            # Busca o projeto e o responsável (obrigatórios)
+            projeto = await Projeto.find_one(Projeto.nome == row['Nome do Projeto'])
+            responsavel = await Funcionario.find_one(Funcionario.email == row['Email Responsável'])
+
+            if not projeto:
+                erros.append(f"Linha {index + 2}: Projeto '{row['Nome do Projeto']}' não encontrado.")
+                continue
+            if not responsavel:
+                erros.append(f"Linha {index + 2}: Responsável com email '{row['Email Responsável']}' não encontrado.")
+                continue
+            
+            # Converte 'Concluído' para booleano de forma segura
+            concluido_val = row.get('Concluído', False)
+            if isinstance(concluido_val, str):
+                concluido = concluido_val.strip().lower() in ['true', '1', 'sim', 'yes', 'verdadeiro']
+            else:
+                concluido = bool(concluido_val)
+
+            # Cria a tarefa com os dados do Excel
+            tarefa_data = TarefaCreate(
+                nome=row['Nome da Tarefa'],
+                projeto_id=str(projeto.id),
+                responsavel_id=str(responsavel.id),
+                prazo=pd.to_datetime(row['Prazo']).date(),
+                descricao=row.get('Descrição'),
+                prioridade=row.get('Prioridade', PrioridadeTarefa.MEDIA),
+                status=row.get('Status', StatusTarefa.NAO_INICIADA),
+                # Novos campos (usando .get para serem opcionais)
+                numero=str(row.get('Número')) if pd.notna(row.get('Número')) else None,
+                classificacao=row.get('Classificação'),
+                fase=row.get('Fase'),
+                condicao=row.get('Condição'),
+                documento_referencia=row.get('Documento de Referência'),
+                concluido=concluido
+            )
+            
+            tarefa = Tarefa(
+                **tarefa_data.dict(exclude={"projeto_id", "responsavel_id"}),
+                projeto=projeto,
+                responsavel=responsavel
+            )
+            await tarefa.insert()
+            tarefas_criadas += 1
+
+        except Exception as e:
+            erros.append(f"Linha {index + 2}: Erro ao processar - {e}")
+
+    return {
+        "message": "Importação concluída.",
+        "tarefas_criadas": tarefas_criadas,
+        "erros": erros
+    }
 
 # --- Webhook ---
 @app.post("/webhook", tags=["Dialogflow"])

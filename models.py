@@ -120,6 +120,13 @@ class TarefaCreate(BaseModel):
     prioridade: PrioridadeTarefa = PrioridadeTarefa.MEDIA
     status: StatusTarefa = StatusTarefa.NAO_INICIADA
     prazo: date
+    numero: Optional[str] = None
+    classificacao: Optional[str] = None
+    fase: Optional[str] = None
+    condicao: Optional[str] = None
+    documento_referencia: Optional[str] = None
+    concluido: Optional[bool] = False
+
 
 class CalendarioCreate(BaseModel):
     tipoEvento: str
