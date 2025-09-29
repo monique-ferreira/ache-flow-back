@@ -68,11 +68,6 @@ async def login_para_obter_token(form_data: OAuth2PasswordRequestForm = Depends(
 # --- CRUD Completo: Funcionários ---
 @app.post("/funcionarios", response_model=Funcionario, tags=["Funcionários"], summary="Criar um novo funcionário (Registro)")
 async def criar_funcionario(funcionario_data: FuncionarioCreate):
-    if len(funcionario_data.senha.encode('utf-8')) > 72:
-        raise HTTPException(
-            status_code=400,
-            detail="A senha não pode ter mais de 72 caracteres."
-        )
     if await Funcionario.find_one(Funcionario.email == funcionario_data.email):
         raise HTTPException(status_code=400, detail="Um funcionário com este email já existe.")
     senha_hashed = auth.gerar_hash_senha(funcionario_data.senha)
