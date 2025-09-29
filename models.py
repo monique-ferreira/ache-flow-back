@@ -1,6 +1,6 @@
 # models.py
 from datetime import datetime, date
-from typing import Optional, List
+from typing import Optional, List, Any, Dict
 from beanie import Document, Link
 from pydantic import BaseModel, EmailStr, Field
 from enum import Enum
@@ -50,6 +50,12 @@ class Tarefa(Document):
     prazo: date
     projeto: Link[Projeto]
     responsavel: Link[Funcionario]
+    numero: Optional[str] = None
+    classificacao: Optional[str] = None
+    fase: Optional[str] = None
+    condicao: Optional[str] = None
+    documento_referencia: Optional[str] = None
+    concluido: Optional[bool] = False
 
     class Settings:
         name = "tarefas"
@@ -127,17 +133,28 @@ class TarefaCreate(BaseModel):
     documento_referencia: Optional[str] = None
     concluido: Optional[bool] = False
 
-
 class CalendarioCreate(BaseModel):
     tipoEvento: str
     data_hora_evento: datetime
     projeto_id: Optional[str] = None
     tarefa_id: Optional[str] = None
 
-# --- Models para Autenticação ---
+# --- Models para Autenticação e Chat ---
 class Token(BaseModel):
     access_token: str
     token_type: str
 
 class TokenData(BaseModel):
     email: Optional[str] = None
+
+class ChatRequest(BaseModel):
+    pergunta: str
+
+# --- MODELO DE RESPOSTA PADRONIZADO PARA A IA ---
+class AIResponse(BaseModel):
+    """
+    Define uma estrutura de resposta padronizada para qualquer interação com a IA.
+    """
+    tipo_resposta: str
+    conteudo_texto: str
+    dados: Optional[Dict[str, Any]] = None
