@@ -14,7 +14,7 @@ import io
 
 # Importa a lógica de autenticação, IA e os modelos
 import auth
-import ia_generativa
+from ia_generativa import inicializar_ia, gerar_resposta_ia
 from database import db
 from models import (
     Funcionario, Projeto, Tarefa, Calendario, Token,
@@ -26,7 +26,10 @@ from models import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Inicializa a conexão com o banco de dados
     await db.initialize()
+    # Inicializa o modelo de IA (apenas uma vez)
+    inicializar_ia()
     yield
 
 app = FastAPI(
@@ -84,7 +87,7 @@ async def obter_resposta_ia(pergunta: str, current_user: Funcionario) -> AIRespo
         contexto_formatado += "Nenhum funcionário cadastrado."
 
     # 3. Chamar a IA com o contexto completo e a pergunta original
-    texto_gerado_pela_ia = await ia_generativa.gerar_resposta_ia(
+    texto_gerado_pela_ia = await gerar_resposta_ia(
         contexto=contexto_formatado,
         pergunta=pergunta,
         nome_usuario=nome_usuario
