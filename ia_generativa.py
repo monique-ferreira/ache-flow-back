@@ -17,7 +17,7 @@ LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1") # Ex: us-central1
 vertexai.init(project=PROJECT_ID, location=LOCATION)
 
 # Carrega o modelo generativo Gemini
-model = GenerativeModel("gemini-2.5-flash")
+model = GenerativeModel("gemini-1.5-flash")
 
 async def gerar_resposta_ia(tarefas_usuario: str, nome_usuario: str) -> str:
     """
