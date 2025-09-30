@@ -49,9 +49,6 @@ app.add_middleware(
 )
 
 # --- LÓGICA CENTRAL DA IA ---
-# main.py
-
-# --- LÓGICA CENTRAL DA IA (Trecho completo e otimizado) ---
 async def obter_resposta_ia(pergunta: str, current_user: Funcionario) -> AIResponse:
     nome_usuario = current_user.nome
 
@@ -61,11 +58,10 @@ async def obter_resposta_ia(pergunta: str, current_user: Funcionario) -> AIRespo
     tarefas_pendentes = await Tarefa.find(
         Tarefa.responsavel.id == current_user.id,
         Tarefa.status != StatusTarefa.CONCLUIDA
-    ).sort(+Tarefa.prazo).limit(10).to_list()
+    ).sort(+Tarefa.prazo).to_list()
     
-    todos_funcionarios = await Funcionario.find_all().project(
-        Funcionario.nome, Funcionario.sobrenome, Funcionario.cargo, Funcionario.departamento
-    ).to_list()
+    # Buscar todos os funcionários para dar contexto geral à IA
+    todos_funcionarios = await Funcionario.find_all().to_list()
 
     # 2. Formatar o contexto para a IA
     contexto_formatado = f"**Dados do usuário logado ({nome_usuario}):**\n"
@@ -91,7 +87,6 @@ async def obter_resposta_ia(pergunta: str, current_user: Funcionario) -> AIRespo
         contexto_formatado += "Nenhum funcionário cadastrado."
 
     # 3. Chamar a IA com o contexto completo e a pergunta original
-    # (A função gerar_resposta_ia está no arquivo ia_generativa.py)
     texto_gerado_pela_ia = await gerar_resposta_ia(
         contexto=contexto_formatado,
         pergunta=pergunta,
