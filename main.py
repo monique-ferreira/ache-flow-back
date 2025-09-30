@@ -33,7 +33,7 @@ app = FastAPI(
     lifespan=lifespan,
     title="API de Gerenciamento de Projetos e Tarefas",
     description="API com CRUD completo, autenticação e IA Generativa.",
-    version="8.0.0" # IA com contexto global de funcionários
+    version="7.0.0" # Refatorado com lógica de IA centralizada
 )
 
 # Configuração do CORS
@@ -47,54 +47,51 @@ app.add_middleware(
 
 # --- LÓGICA CENTRAL DA IA ---
 async def obter_resposta_ia(pergunta: str, current_user: Funcionario) -> AIResponse:
+    """
+    Função central que contém a lógica para buscar contexto e chamar a IA.
+    Pode ser usada por múltiplos endpoints.
+    """
     nome_usuario = current_user.nome
-
-    # 1. Coletar TODO o contexto relevante
-    # Dados do usuário logado
-    projetos_usuario = await Projeto.find(Projeto.responsavel.id == current_user.id).to_list()
     tarefas_pendentes = await Tarefa.find(
         Tarefa.responsavel.id == current_user.id,
         Tarefa.status != StatusTarefa.CONCLUIDA
     ).sort(+Tarefa.prazo).to_list()
-    
-    # Buscar todos os funcionários para dar contexto geral à IA
-    todos_funcionarios = await Funcionario.find_all().to_list()
 
-    # 2. Formatar o contexto para a IA
-    contexto_formatado = f"**Dados do usuário logado ({nome_usuario}):**\n"
-    if projetos_usuario:
-        contexto_formatado += "Projetos sob sua responsabilidade:\n" + "\n".join([f"- {p.nome}" for p in projetos_usuario])
-    else:
-        contexto_formatado += "Nenhum projeto encontrado.\n"
-
-    contexto_formatado += "\n\nTarefas Pendentes:\n"
-    if tarefas_pendentes:
-        contexto_formatado += "\n".join(
-            [f"- Título: '{t.nome}', Status: '{t.status.value}', Prazo: {t.prazo.strftime('%d/%m/%Y')}" for t in tarefas_pendentes]
+    pergunta_lower = pergunta.lower()
+    if ("prioridade" in pergunta_lower or "organizar" in pergunta_lower or "cronograma" in pergunta_lower) and tarefas_pendentes:
+        dados_para_ia = "\n".join(
+            [f"- Tarefa: '{t.nome}', Prazo: {t.prazo.strftime('%d/%m/%Y')}" for t in tarefas_pendentes]
+        )
+        texto_gerado_pela_ia = await ia_generativa.gerar_resposta_ia(
+            tarefas_usuario=dados_para_ia,
+            nome_usuario=nome_usuario
+        )
+        dados_gantt = []
+        for t in tarefas_pendentes:
+            dados_gantt.append({
+                "id": str(t.id), "nome": t.nome,
+                "inicio": t.dataCriacao.strftime("%Y-%m-%d"),
+                "fim": t.prazo.strftime("%Y-%m-%d"),
+            })
+        return AIResponse(
+            tipo_resposta="GRAFICO_GANTT",
+            conteudo_texto=texto_gerado_pela_ia,
+            dados={"dados_grafico": dados_gantt, "titulo": f"Cronograma Sugerido para {nome_usuario}"}
         )
     else:
-        contexto_formatado += "Nenhuma tarefa pendente."
-
-    contexto_formatado += f"\n\n**Lista de todos os funcionários na empresa:**\n"
-    if todos_funcionarios:
-        contexto_formatado += "\n".join(
-            [f"- Nome: {f.nome} {f.sobrenome}, Cargo: {f.cargo or 'Não informado'}, Departamento: {f.departamento or 'Não informado'}" for f in todos_funcionarios]
+        dados_formatados = "Nenhuma tarefa pendente."
+        if tarefas_pendentes:
+            dados_formatados = f"O usuário tem {len(tarefas_pendentes)} tarefas pendentes."
+        prompt_final = f"Contexto: {dados_formatados}\n\nA pergunta do usuário é: \"{pergunta}\""
+        texto_gerado_pela_ia = await ia_generativa.gerar_resposta_ia(
+            tarefas_usuario=prompt_final,
+            nome_usuario=nome_usuario
         )
-    else:
-        contexto_formatado += "Nenhum funcionário cadastrado."
-
-    # 3. Chamar a IA com o contexto completo e a pergunta original
-    texto_gerado_pela_ia = await ia_generativa.gerar_resposta_ia(
-        contexto=contexto_formatado,
-        pergunta=pergunta,
-        nome_usuario=nome_usuario
-    )
-
-    return AIResponse(
-        tipo_resposta="TEXTO",
-        conteudo_texto=texto_gerado_pela_ia,
-        dados=None
-    )
+        return AIResponse(
+            tipo_resposta="TEXTO",
+            conteudo_texto=texto_gerado_pela_ia,
+            dados=None
+        )
 
 # --- ENDPOINT DE AUTENTICAÇÃO ---
 @app.post("/token", response_model=Token, tags=["Autenticação"])
