@@ -1,12 +1,11 @@
 # main.py
 from fastapi import FastAPI, HTTPException, Body, Query, Depends, status, Request, UploadFile, File
 from fastapi.security import OAuth2PasswordRequestForm
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from typing import List, Optional
 from beanie import PydanticObjectId, operators
 from contextlib import asynccontextmanager
 from datetime import date, datetime
-import re
 from jose import JWTError, jwt
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
@@ -24,11 +23,13 @@ from models import (
     ChatRequest, AIResponse
 )
 
+# NOVOS módulos
+from ingest import ingest_file, ingest_from_doc_link, ingest_from_doc_links
+from command_router import handle_command
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Inicializa a conexão com o banco de dados
     await db.initialize()
-    # Inicializa o modelo de IA (apenas uma vez)
     inicializar_ia()
     yield
 
@@ -36,10 +37,10 @@ app = FastAPI(
     lifespan=lifespan,
     title="API de Gerenciamento de Projetos e Tarefas",
     description="API com CRUD completo, autenticação e IA Generativa.",
-    version="8.0.0" # IA com contexto global de funcionários
+    version="9.1.0"  # IA + comandos + ingestão universal + múltiplos links
 )
 
-# Configuração do CORS
+# CORS amplo (ajuste se necessário)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -52,18 +53,15 @@ app.add_middleware(
 async def obter_resposta_ia(pergunta: str, current_user: Funcionario) -> AIResponse:
     nome_usuario = current_user.nome
 
-    # 1. Coletar TODO o contexto relevante
-    # Dados do usuário logado
+    # 1. Coletar contexto
     projetos_usuario = await Projeto.find(Projeto.responsavel.id == current_user.id).to_list()
     tarefas_pendentes = await Tarefa.find(
         Tarefa.responsavel.id == current_user.id,
         Tarefa.status != StatusTarefa.CONCLUIDA
     ).sort(+Tarefa.prazo).to_list()
-    
-    # Buscar todos os funcionários para dar contexto geral à IA
     todos_funcionarios = await Funcionario.find_all().to_list()
 
-    # 2. Formatar o contexto para a IA
+    # 2. Montar contexto
     contexto_formatado = f"**Dados do usuário logado ({nome_usuario}):**\n"
     if projetos_usuario:
         contexto_formatado += "Projetos sob sua responsabilidade:\n" + "\n".join([f"- {p.nome}" for p in projetos_usuario])
@@ -86,7 +84,7 @@ async def obter_resposta_ia(pergunta: str, current_user: Funcionario) -> AIRespo
     else:
         contexto_formatado += "Nenhum funcionário cadastrado."
 
-    # 3. Chamar a IA com o contexto completo e a pergunta original
+    # 3. Chamar IA
     texto_gerado_pela_ia = await gerar_resposta_ia(
         contexto=contexto_formatado,
         pergunta=pergunta,
@@ -99,7 +97,7 @@ async def obter_resposta_ia(pergunta: str, current_user: Funcionario) -> AIRespo
         dados=None
     )
 
-# --- ENDPOINT DE AUTENTICAÇÃO ---
+# --- AUTENTICAÇÃO ---
 @app.post("/token", response_model=Token, tags=["Autenticação"])
 async def login_para_obter_token(form_data: OAuth2PasswordRequestForm = Depends()):
     funcionario = await Funcionario.find_one(Funcionario.email == form_data.username)
@@ -108,16 +106,26 @@ async def login_para_obter_token(form_data: OAuth2PasswordRequestForm = Depends(
     token_acesso = auth.criar_token_acesso(data={"sub": funcionario.email})
     return {"access_token": token_acesso, "token_type": "bearer"}
 
-# --- ENDPOINT DE IA GENERATIVA ---
-@app.post("/ai/chat", response_model=AIResponse, tags=["IA Generativa"], summary="Processa uma pergunta do usuário usando IA Generativa")
+# --- CHAT IA + COMANDOS ---
+@app.post("/ai/chat", response_model=AIResponse, tags=["IA Generativa"], summary="Processa pergunta usando IA. Se detectar comando, executa antes.")
 async def processar_chat_ia(
     chat_request: ChatRequest,
     current_user: Funcionario = Depends(auth.get_usuario_logado)
 ):
+    # 1) Tenta executar um comando (ação direta)
+    cmd_result = await handle_command(chat_request.pergunta)
+    if cmd_result:
+        msg_cmd = cmd_result["mensagem"]
+        ai = await obter_resposta_ia(f"{chat_request.pergunta}\n\nResumo: {msg_cmd}", current_user)
+        ai.conteudo_texto = f"{msg_cmd}\n\n{ai.conteudo_texto}"
+        ai.tipo_resposta = "ACOES+TEXTO"
+        return ai
+
+    # 2) Caso contrário, apenas IA
     return await obter_resposta_ia(chat_request.pergunta, current_user)
 
-# --- CRUD Completo: Funcionários ---
-@app.post("/funcionarios", response_model=Funcionario, tags=["Funcionários"], summary="Criar um novo funcionário (Registro)")
+# --- CRUDs (existentes) ---
+@app.post("/funcionarios", response_model=Funcionario, tags=["Funcionários"])
 async def criar_funcionario(funcionario_data: FuncionarioCreate):
     if await Funcionario.find_one(Funcionario.email == funcionario_data.email):
         raise HTTPException(status_code=400, detail="Um funcionário com este email já existe.")
@@ -127,22 +135,22 @@ async def criar_funcionario(funcionario_data: FuncionarioCreate):
     await funcionario.insert()
     return funcionario
 
-@app.get("/funcionarios/me", response_model=Funcionario, tags=["Funcionários"], summary="Obter dados do usuário logado")
+@app.get("/funcionarios/me", response_model=Funcionario, tags=["Funcionários"])
 async def ler_usuario_logado(current_user: Funcionario = Depends(auth.get_usuario_logado)):
     return current_user
 
-@app.get("/funcionarios", response_model=List[Funcionario], tags=["Funcionários"], summary="Listar todos os funcionários")
+@app.get("/funcionarios", response_model=List[Funcionario], tags=["Funcionários"])
 async def listar_funcionarios(current_user: Funcionario = Depends(auth.get_usuario_logado)):
     return await Funcionario.find_all().to_list()
 
-@app.get("/funcionarios/{id}", response_model=Funcionario, tags=["Funcionários"], summary="Obter um funcionário por ID")
+@app.get("/funcionarios/{id}", response_model=Funcionario, tags=["Funcionários"])
 async def obter_funcionario(id: PydanticObjectId, current_user: Funcionario = Depends(auth.get_usuario_logado)):
     funcionario = await Funcionario.get(id)
     if not funcionario:
         raise HTTPException(status_code=404, detail="Funcionário não encontrado.")
     return funcionario
 
-@app.put("/funcionarios/{id}", response_model=Funcionario, tags=["Funcionários"], summary="Atualizar um funcionário")
+@app.put("/funcionarios/{id}", response_model=Funcionario, tags=["Funcionários"])
 async def atualizar_funcionario(id: PydanticObjectId, update_data: FuncionarioUpdate, current_user: Funcionario = Depends(auth.get_usuario_logado)):
     funcionario = await Funcionario.get(id)
     if not funcionario:
@@ -153,7 +161,7 @@ async def atualizar_funcionario(id: PydanticObjectId, update_data: FuncionarioUp
     await funcionario.save()
     return funcionario
 
-@app.delete("/funcionarios/{id}", status_code=204, tags=["Funcionários"], summary="Deletar um funcionário")
+@app.delete("/funcionarios/{id}", status_code=204, tags=["Funcionários"])
 async def deletar_funcionario(id: PydanticObjectId, current_user: Funcionario = Depends(auth.get_usuario_logado)):
     funcionario = await Funcionario.get(id)
     if not funcionario:
@@ -161,8 +169,7 @@ async def deletar_funcionario(id: PydanticObjectId, current_user: Funcionario = 
     await funcionario.delete()
     return None
 
-# --- CRUD Completo: Projetos ---
-@app.post("/projetos", response_model=Projeto, tags=["Projetos"], summary="Criar um novo projeto")
+@app.post("/projetos", response_model=Projeto, tags=["Projetos"])
 async def criar_projeto(projeto_data: ProjetoCreate, current_user: Funcionario = Depends(auth.get_usuario_logado)):
     responsavel = await Funcionario.get(PydanticObjectId(projeto_data.responsavel_id))
     if not responsavel:
@@ -171,18 +178,18 @@ async def criar_projeto(projeto_data: ProjetoCreate, current_user: Funcionario =
     await projeto.insert()
     return projeto
 
-@app.get("/projetos", response_model=List[Projeto], tags=["Projetos"], summary="Listar todos os projetos")
+@app.get("/projetos", response_model=List[Projeto], tags=["Projetos"])
 async def listar_projetos(current_user: Funcionario = Depends(auth.get_usuario_logado)):
     return await Projeto.find_all(fetch_links=True).to_list()
 
-@app.get("/projetos/{id}", response_model=Projeto, tags=["Projetos"], summary="Obter um projeto por ID")
+@app.get("/projetos/{id}", response_model=Projeto, tags=["Projetos"])
 async def obter_projeto(id: PydanticObjectId, current_user: Funcionario = Depends(auth.get_usuario_logado)):
     projeto = await Projeto.get(id, fetch_links=True)
     if not projeto:
         raise HTTPException(status_code=404, detail="Projeto não encontrado.")
     return projeto
 
-@app.put("/projetos/{id}", response_model=Projeto, tags=["Projetos"], summary="Atualizar um projeto")
+@app.put("/projetos/{id}", response_model=Projeto, tags=["Projetos"])
 async def atualizar_projeto(id: PydanticObjectId, update_data: ProjetoUpdate, current_user: Funcionario = Depends(auth.get_usuario_logado)):
     projeto = await Projeto.get(id, fetch_links=True)
     if not projeto:
@@ -199,7 +206,7 @@ async def atualizar_projeto(id: PydanticObjectId, update_data: ProjetoUpdate, cu
     await projeto.save()
     return await Projeto.get(id, fetch_links=True)
 
-@app.delete("/projetos/{id}", status_code=204, tags=["Projetos"], summary="Deletar um projeto")
+@app.delete("/projetos/{id}", status_code=204, tags=["Projetos"])
 async def deletar_projeto(id: PydanticObjectId, current_user: Funcionario = Depends(auth.get_usuario_logado)):
     projeto = await Projeto.get(id)
     if not projeto:
@@ -207,8 +214,7 @@ async def deletar_projeto(id: PydanticObjectId, current_user: Funcionario = Depe
     await projeto.delete()
     return None
 
-# --- CRUD Completo: Tarefas ---
-@app.post("/tarefas", response_model=Tarefa, tags=["Tarefas"], summary="Criar uma nova tarefa")
+@app.post("/tarefas", response_model=Tarefa, tags=["Tarefas"])
 async def criar_tarefa(tarefa_data: TarefaCreate, current_user: Funcionario = Depends(auth.get_usuario_logado)):
     projeto = await Projeto.get(PydanticObjectId(tarefa_data.projeto_id))
     if not projeto: raise HTTPException(status_code=404, detail="Projeto não encontrado.")
@@ -219,7 +225,7 @@ async def criar_tarefa(tarefa_data: TarefaCreate, current_user: Funcionario = De
     await tarefa.insert()
     return tarefa
 
-@app.get("/tarefas", response_model=List[Tarefa], tags=["Tarefas"], summary="Listar tarefas com filtros")
+@app.get("/tarefas", response_model=List[Tarefa], tags=["Tarefas"])
 async def listar_tarefas_filtradas(
     departamento: Optional[str] = Query(None, description="Filtrar por departamento do responsável"),
     projeto_id: Optional[PydanticObjectId] = Query(None, description="Filtrar por ID do projeto"),
@@ -240,14 +246,14 @@ async def listar_tarefas_filtradas(
     tarefas = await Tarefa.find(*query_conditions, fetch_links=True).sort(*sort_expression).to_list()
     return tarefas
 
-@app.get("/tarefas/{id}", response_model=Tarefa, tags=["Tarefas"], summary="Obter uma tarefa por ID")
+@app.get("/tarefas/{id}", response_model=Tarefa, tags=["Tarefas"])
 async def obter_tarefa(id: PydanticObjectId, current_user: Funcionario = Depends(auth.get_usuario_logado)):
     tarefa = await Tarefa.get(id, fetch_links=True)
     if not tarefa:
         raise HTTPException(status_code=404, detail="Tarefa não encontrada.")
     return tarefa
 
-@app.put("/tarefas/{id}", response_model=Tarefa, tags=["Tarefas"], summary="Atualizar uma tarefa")
+@app.put("/tarefas/{id}", response_model=Tarefa, tags=["Tarefas"])
 async def atualizar_tarefa(id: PydanticObjectId, update_data: TarefaUpdate, current_user: Funcionario = Depends(auth.get_usuario_logado)):
     tarefa = await Tarefa.get(id, fetch_links=True)
     if not tarefa:
@@ -265,7 +271,7 @@ async def atualizar_tarefa(id: PydanticObjectId, update_data: TarefaUpdate, curr
     await tarefa.save()
     return await Tarefa.get(id, fetch_links=True)
 
-@app.delete("/tarefas/{id}", status_code=204, tags=["Tarefas"], summary="Deletar uma tarefa")
+@app.delete("/tarefas/{id}", status_code=204, tags=["Tarefas"])
 async def deletar_tarefa(id: PydanticObjectId, current_user: Funcionario = Depends(auth.get_usuario_logado)):
     tarefa = await Tarefa.get(id)
     if not tarefa:
@@ -273,8 +279,8 @@ async def deletar_tarefa(id: PydanticObjectId, current_user: Funcionario = Depen
     await tarefa.delete()
     return None
 
-# --- CRUD COMPLETO: Calendário ---
-@app.post("/calendario", response_model=Calendario, tags=["Calendário"], summary="Agendar um novo evento")
+# --- Calendário (existente) ---
+@app.post("/calendario", response_model=Calendario, tags=["Calendário"])
 async def criar_evento_calendario(calendario_data: CalendarioCreate, current_user: Funcionario = Depends(auth.get_usuario_logado)):
     projeto_link = tarefa_link = None
     if calendario_data.projeto_id:
@@ -287,18 +293,18 @@ async def criar_evento_calendario(calendario_data: CalendarioCreate, current_use
     await evento.insert()
     return evento
 
-@app.get("/calendario", response_model=List[Calendario], tags=["Calendário"], summary="Listar todos os eventos")
+@app.get("/calendario", response_model=List[Calendario], tags=["Calendário"])
 async def listar_eventos_calendario(current_user: Funcionario = Depends(auth.get_usuario_logado)):
     return await Calendario.find_all(fetch_links=True).to_list()
 
-@app.get("/calendario/{id}", response_model=Calendario, tags=["Calendário"], summary="Obter um evento por ID")
+@app.get("/calendario/{id}", response_model=Calendario, tags=["Calendário"])
 async def obter_evento_calendario(id: PydanticObjectId, current_user: Funcionario = Depends(auth.get_usuario_logado)):
     evento = await Calendario.get(id, fetch_links=True)
     if not evento:
         raise HTTPException(status_code=404, detail="Evento do calendário não encontrado.")
     return evento
 
-@app.put("/calendario/{id}", response_model=Calendario, tags=["Calendário"], summary="Atualizar um evento")
+@app.put("/calendario/{id}", response_model=Calendario, tags=["Calendário"])
 async def atualizar_evento_calendario(id: PydanticObjectId, update_data: CalendarioUpdate, current_user: Funcionario = Depends(auth.get_usuario_logado)):
     evento = await Calendario.get(id)
     if not evento:
@@ -314,7 +320,7 @@ async def atualizar_evento_calendario(id: PydanticObjectId, update_data: Calenda
     await evento.save()
     return await Calendario.get(id, fetch_links=True)
 
-@app.delete("/calendario/{id}", status_code=204, tags=["Calendário"], summary="Deletar um evento")
+@app.delete("/calendario/{id}", status_code=204, tags=["Calendário"])
 async def deletar_evento_calendario(id: PydanticObjectId, current_user: Funcionario = Depends(auth.get_usuario_logado)):
     evento = await Calendario.get(id)
     if not evento:
@@ -322,13 +328,29 @@ async def deletar_evento_calendario(id: PydanticObjectId, current_user: Funciona
     await evento.delete()
     return None
 
-# --- EXPORTAÇÃO E IMPORTAÇÃO DE TAREFAS (EXCEL) ---
-@app.get("/tarefas/exportar", tags=["Tarefas"], summary="Exportar todas as tarefas para um arquivo Excel")
+# --- Exportação/Importação de Tarefas (existente) ---
+@app.get("/tarefas/exportar", tags=["Tarefas"])
 async def exportar_tarefas_excel(current_user: Funcionario = Depends(auth.get_usuario_logado)):
     tarefas = await Tarefa.find_all(fetch_links=True).to_list()
     if not tarefas:
-        raise HTTPException(status_code=404, detail="Nenhuma tarefa encontrada para exportar.")
-    tarefas_data = [{"ID da Tarefa": str(t.id), "Nome da Tarefa": t.nome, "Descrição": t.descricao, "Prioridade": t.prioridade.value, "Status": t.status.value, "Prazo": t.prazo.isoformat(), "Projeto": t.projeto.nome if t.projeto else None, "Responsável": f"{t.responsavel.nome} {t.responsavel.sobrenome}" if t.responsavel else None, "Email Responsável": t.responsavel.email if t.responsavel else None, "Número": t.numero, "Classificação": t.classificacao, "Fase": t.fase, "Condição": t.condicao, "Documento de Referência": t.documento_referencia, "Concluído": t.concluido} for t in tarefas]
+        raise HTTPException(status_code=404, detail="Nenhuma tarefa encontrado para exportar.")
+    tarefas_data = [{
+        "ID da Tarefa": str(t.id),
+        "Nome da Tarefa": t.nome,
+        "Descrição": t.descricao,
+        "Prioridade": t.prioridade.value,
+        "Status": t.status.value,
+        "Prazo": t.prazo.isoformat(),
+        "Projeto": t.projeto.nome if t.projeto else None,
+        "Responsável": f"{t.responsavel.nome} {t.responsavel.sobrenome}" if t.responsavel else None,
+        "Email Responsável": t.responsavel.email if t.responsavel else None,
+        "Número": t.numero,
+        "Classificação": t.classificacao,
+        "Fase": t.fase,
+        "Condição": t.condicao,
+        "Documento de Referência": t.documento_referencia,
+        "Concluído": t.concluido
+    } for t in tarefas]
     df = pd.DataFrame(tarefas_data)
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -337,41 +359,59 @@ async def exportar_tarefas_excel(current_user: Funcionario = Depends(auth.get_us
     headers = {'Content-Disposition': 'attachment; filename="tarefas.xlsx"'}
     return StreamingResponse(output, headers=headers, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
-@app.post("/tarefas/importar", tags=["Tarefas"], summary="Importar tarefas de um arquivo Excel")
-async def importar_tarefas_excel(file: UploadFile = File(...), current_user: Funcionario = Depends(auth.get_usuario_logado)):
-    if not file.filename.endswith('.xlsx'):
-        raise HTTPException(status_code=400, detail="Formato de arquivo inválido. Por favor, envie um arquivo .xlsx.")
-    try:
-        contents = await file.read()
-        df = pd.read_excel(io.BytesIO(contents))
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Erro ao ler o arquivo Excel: {e}")
-    tarefas_criadas, erros = 0, []
-    for index, row in df.iterrows():
-        try:
-            if not all(k in row and pd.notna(row[k]) for k in ['Nome da Tarefa', 'Prazo', 'Nome do Projeto', 'Email Responsável']):
-                erros.append(f"Linha {index + 2}: Faltam colunas obrigatórias ou elas estão vazias.")
-                continue
-            projeto, responsavel = await Projeto.find_one(Projeto.nome == row['Nome do Projeto']), await Funcionario.find_one(Funcionario.email == row['Email Responsável'])
-            if not projeto: erros.append(f"Linha {index + 2}: Projeto '{row['Nome do Projeto']}' não encontrado."); continue
-            if not responsavel: erros.append(f"Linha {index + 2}: Responsável com email '{row['Email Responsável']}' não encontrado."); continue
-            concluido_val = row.get('Concluído', False)
-            concluido = str(concluido_val).strip().lower() in ['true', '1', 'sim', 'yes', 'verdadeiro'] if isinstance(concluido_val, str) else bool(concluido_val)
-            tarefa_data = TarefaCreate(**row.to_dict(), projeto_id=str(projeto.id), responsavel_id=str(responsavel.id), prazo=pd.to_datetime(row['Prazo']).date(), concluido=concluido)
-            tarefa = Tarefa(**tarefa_data.dict(exclude={"projeto_id", "responsavel_id"}), projeto=projeto, responsavel=responsavel)
-            await tarefa.insert()
-            tarefas_criadas += 1
-        except Exception as e:
-            erros.append(f"Linha {index + 2}: Erro ao processar - {e}")
-    return {"message": "Importação concluída.", "tarefas_criadas": tarefas_criadas, "erros": erros}
+# --- NOVO: Import universal (xlsx/csv/docx) + Link(s) de DOC ---
+@app.post("/ingest/arquivo", tags=["Ingestão"], summary="Envia .xlsx, .csv ou .docx; auto-roteia para tarefas/projetos/funcionários")
+async def ingest_arquivo(file: UploadFile = File(...), current_user: Funcionario = Depends(auth.get_usuario_logado)):
+    contents = await file.read()
+    result = await ingest_file(file.filename, contents)
+    return JSONResponse(result)
 
-# --- Webhook ---
+@app.post("/ingest/link", tags=["Ingestão"], summary="Um DOC (Google Docs/Word publicado) com hyperlinks para Sheets/Excel/CSV")
+async def ingest_link(
+    url: str = Body(..., embed=True, description="URL do documento que contém hyperlinks"),
+    pegar_indice: Optional[int] = Body(None, embed=True, description="Ex.: 3 para 'terceira planilha'"),
+    limitar_linhas: Optional[int] = Body(None, embed=True, description="Limite de linhas ao ler a planilha"),
+    current_user: Funcionario = Depends(auth.get_usuario_logado)
+):
+    result = await ingest_from_doc_link(url, pick_index=pegar_indice, limit_rows=limitar_linhas)
+    return JSONResponse(result)
+
+@app.post(
+    "/ingest/links",
+    tags=["Ingestão"],
+    summary="Vários DOCs (Google Docs/Word publicado), cada um com hyperlinks para Sheets/Excel/CSV"
+)
+async def ingest_links(
+    payload: dict = Body(
+        ...,
+        example={
+            "urls": [
+                "https://docs.google.com/document/d/AAA...",
+                "https://docs.google.com/document/d/BBB..."
+            ],
+            "pegar_indice": None,
+            "limitar_linhas": 100
+        },
+        description=(
+            "Envie 'urls' como lista de documentos (cada um contendo hyperlinks para planilhas).\n"
+            "Opcionalmente, 'pegar_indice' (ex.: 3 para 'terceira planilha') e 'limitar_linhas' (inteiro)."
+        ),
+    ),
+    current_user: Funcionario = Depends(auth.get_usuario_logado)
+):
+    urls = payload.get("urls")
+    if not urls or not isinstance(urls, list):
+        raise HTTPException(status_code=400, detail="Campo 'urls' deve ser uma lista com ao menos um link.")
+    pegar_indice = payload.get("pegar_indice")
+    limitar_linhas = payload.get("limitar_linhas")
+    result = await ingest_from_doc_links(urls, pick_index=pegar_indice, limit_rows=limitar_linhas)
+    return JSONResponse(result)
+
+# --- Webhook (Dialogflow) ---
 @app.post("/webhook", tags=["Dialogflow"])
 async def dialogflow_webhook(request: Request):
     payload = await request.json()
-    pergunta = payload.get("text")
-    if not pergunta:
-        pergunta = payload.get("sessionInfo", {}).get("parameters", {}).get("pergunta", "pergunta não encontrada")
+    pergunta = payload.get("text") or payload.get("sessionInfo", {}).get("parameters", {}).get("pergunta", "pergunta não encontrada")
     token = payload.get("sessionInfo", {}).get("parameters", {}).get("token")
     usuario_logado = None
     if token:
@@ -384,12 +424,18 @@ async def dialogflow_webhook(request: Request):
             pass
     if not usuario_logado:
         return {"fulfillment_response": {"messages": [{"text": {"text": ["Sessão inválida. Por favor, faça login novamente."]}}]}}
-    resposta_ia = await obter_resposta_ia(pergunta, usuario_logado)
+    cmd_result = await handle_command(pergunta)
+    if cmd_result:
+        ai = await obter_resposta_ia(pergunta, usuario_logado)
+        texto = f"{cmd_result['mensagem']}\n\n{ai.conteudo_texto}"
+    else:
+        ai = await obter_resposta_ia(pergunta, usuario_logado)
+        texto = ai.conteudo_texto
     response_json = {
         "fulfillment_response": {
             "messages": [
-                {"text": {"text": [resposta_ia.conteudo_texto]}},
-                {"payload": resposta_ia.dict()}
+                {"text": {"text": [texto]}},
+                {"payload": ai.dict()}
             ]
         }
     }
