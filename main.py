@@ -29,6 +29,7 @@ from command_router import handle_command
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Inicializa a conexão com o banco de dados
     await db.initialize()
     inicializar_ia()
     yield

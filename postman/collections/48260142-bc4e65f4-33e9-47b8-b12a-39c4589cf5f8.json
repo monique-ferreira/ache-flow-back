@@ -1,0 +1,988 @@
+{
+	"info": {
+		"_postman_id": "48260142-bc4e65f4-33e9-47b8-b12a-39c4589cf5f8",
+		"name": "API de Gerenciamento de Projetos e Tarefas",
+		"description": "Backend refatorado para gerenciar funcionários, projetos, tarefas e calendário.\n\nVariavel salva",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "funcionarios",
+			"item": [
+				{
+					"name": "Listar Funcionarios",
+					"id": "48260142-55c05397-fae3-403f-b518-78a047df1e43",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/funcionarios",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"funcionarios"
+							]
+						}
+					},
+					"response": [
+						{
+							"id": "48260142-7a823bac-1f69-41b1-8ad7-bdcd25266f79",
+							"name": "Successful Response",
+							"originalRequest": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Accept",
+										"value": "application/json"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/funcionarios",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"funcionarios"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"responseTime": null,
+							"body": "[\n  {\n    \"nome\": \"string\",\n    \"sobrenome\": \"string\",\n    \"email\": \"X9NBCq4wjBr2q@xdacgzriBuAkKtCHvkKJKFyZYTjAKN.yp\",\n    \"senha\": \"string\",\n    \"_id\": \"5eb7cf5a86d9755df3a6c593\",\n    \"cargo\": \"string\",\n    \"fotoPerfil\": \"string\",\n    \"dataCadastro\": \"2004-07-17T19:58:59.508Z\"\n  },\n  {\n    \"nome\": \"string\",\n    \"sobrenome\": \"string\",\n    \"email\": \"f7PF0i@RasZLuPaNaBOiHvxrOKDFxI.ags\",\n    \"senha\": \"string\",\n    \"_id\": \"5eb7cf5a86d9755df3a6c593\",\n    \"cargo\": \"string\",\n    \"fotoPerfil\": \"string\",\n    \"dataCadastro\": \"1964-03-11T10:29:23.051Z\"\n  }\n]"
+						}
+					]
+				},
+				{
+					"name": "Criar Funcionario",
+					"id": "48260142-a60b8869-bb4c-4014-973b-7c341ee352df",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"nome\": \"string\",\n  \"sobrenome\": \"string\",\n  \"email\": \"0e-D@xzXHUZWRmyeiYncpFlLKpkUbn.pk\",\n  \"senha\": \"string\",\n  \"cargo\": \"string\",\n  \"fotoPerfil\": \"string\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/funcionarios",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"funcionarios"
+							]
+						}
+					},
+					"response": [
+						{
+							"id": "48260142-d62f277d-62f8-40f2-9187-8d54deeba697",
+							"name": "Successful Response",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Accept",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"nome\": \"string\",\n  \"sobrenome\": \"string\",\n  \"email\": \"0e-D@xzXHUZWRmyeiYncpFlLKpkUbn.pk\",\n  \"senha\": \"string\",\n  \"cargo\": \"string\",\n  \"fotoPerfil\": \"string\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/funcionarios",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"funcionarios"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"responseTime": null,
+							"body": "{\n  \"nome\": \"string\",\n  \"sobrenome\": \"string\",\n  \"email\": \"WkUsYZr@EVpodhMKgtNfVIcLzHlgZi.ms\",\n  \"senha\": \"string\",\n  \"_id\": \"5eb7cf5a86d9755df3a6c593\",\n  \"cargo\": \"string\",\n  \"fotoPerfil\": \"string\",\n  \"dataCadastro\": \"1968-02-24T00:17:32.389Z\"\n}"
+						},
+						{
+							"id": "48260142-c1e60c71-c05e-4dca-afef-8a5da52b9633",
+							"name": "Validation Error",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Accept",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"nome\": \"string\",\n  \"sobrenome\": \"string\",\n  \"email\": \"0e-D@xzXHUZWRmyeiYncpFlLKpkUbn.pk\",\n  \"senha\": \"string\",\n  \"cargo\": \"string\",\n  \"fotoPerfil\": \"string\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/funcionarios",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"funcionarios"
+									]
+								}
+							},
+							"status": "Unprocessable Entity (WebDAV) (RFC 4918)",
+							"code": 422,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"responseTime": null,
+							"body": "{\n  \"detail\": [\n    {\n      \"loc\": [\n        \"string\",\n        \"string\"\n      ],\n      \"msg\": \"string\",\n      \"type\": \"string\"\n    },\n    {\n      \"loc\": [\n        \"string\",\n        \"string\"\n      ],\n      \"msg\": \"string\",\n      \"type\": \"string\"\n    }\n  ]\n}"
+						}
+					]
+				}
+			],
+			"id": "48260142-c030c128-8074-4048-8f70-71a968d735b6"
+		},
+		{
+			"name": "projetos",
+			"item": [
+				{
+					"name": "{projeto_id}",
+					"item": [
+						{
+							"name": "Obter Projeto",
+							"id": "48260142-f0475209-61ad-4dc5-ac13-4d8a925bbe4c",
+							"protocolProfileBehavior": {
+								"disableBodyPruning": true
+							},
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Accept",
+										"value": "application/json"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/projetos/:projeto_id",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"projetos",
+										":projeto_id"
+									],
+									"variable": [
+										{
+											"id": "f06557a7-918c-4bf4-ae22-b3b87c8640f7",
+											"key": "projeto_id",
+											"value": "5eb7cf5a86d9755df3a6c593",
+											"description": "(Required) "
+										}
+									]
+								}
+							},
+							"response": [
+								{
+									"id": "48260142-666483f3-6ec7-4493-9add-2cd8480f7b73",
+									"name": "Successful Response",
+									"originalRequest": {
+										"method": "GET",
+										"header": [
+											{
+												"key": "Accept",
+												"value": "application/json"
+											}
+										],
+										"url": {
+											"raw": "{{baseUrl}}/projetos/:projeto_id",
+											"host": [
+												"{{baseUrl}}"
+											],
+											"path": [
+												"projetos",
+												":projeto_id"
+											],
+											"variable": [
+												{
+													"key": "projeto_id",
+													"value": "5eb7cf5a86d9755df3a6c593",
+													"description": "(Required) "
+												}
+											]
+										}
+									},
+									"status": "OK",
+									"code": 200,
+									"_postman_previewlanguage": "json",
+									"header": [
+										{
+											"key": "Content-Type",
+											"value": "application/json"
+										}
+									],
+									"cookie": [],
+									"responseTime": null,
+									"body": "{\n  \"nome\": \"string\",\n  \"situacao\": \"string\",\n  \"prazo\": \"1980-10-10\",\n  \"responsavel\": {\n    \"id\": \"string\",\n    \"collection\": \"string\"\n  },\n  \"_id\": \"5eb7cf5a86d9755df3a6c593\",\n  \"descricao\": \"string\",\n  \"categoria\": \"string\"\n}"
+								},
+								{
+									"id": "48260142-fe5757b7-4e66-4658-a6f4-82b049d806d4",
+									"name": "Validation Error",
+									"originalRequest": {
+										"method": "GET",
+										"header": [
+											{
+												"key": "Accept",
+												"value": "application/json"
+											}
+										],
+										"url": {
+											"raw": "{{baseUrl}}/projetos/:projeto_id",
+											"host": [
+												"{{baseUrl}}"
+											],
+											"path": [
+												"projetos",
+												":projeto_id"
+											],
+											"variable": [
+												{
+													"key": "projeto_id",
+													"value": "5eb7cf5a86d9755df3a6c593",
+													"description": "(Required) "
+												}
+											]
+										}
+									},
+									"status": "Unprocessable Entity (WebDAV) (RFC 4918)",
+									"code": 422,
+									"_postman_previewlanguage": "json",
+									"header": [
+										{
+											"key": "Content-Type",
+											"value": "application/json"
+										}
+									],
+									"cookie": [],
+									"responseTime": null,
+									"body": "{\n  \"detail\": [\n    {\n      \"loc\": [\n        \"string\",\n        \"string\"\n      ],\n      \"msg\": \"string\",\n      \"type\": \"string\"\n    },\n    {\n      \"loc\": [\n        \"string\",\n        \"string\"\n      ],\n      \"msg\": \"string\",\n      \"type\": \"string\"\n    }\n  ]\n}"
+								}
+							]
+						},
+						{
+							"name": "Listar Tarefas Do Projeto",
+							"id": "48260142-24d0654f-6639-4690-a67f-25dceaa56031",
+							"protocolProfileBehavior": {
+								"disableBodyPruning": true
+							},
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Accept",
+										"value": "application/json"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/projetos/:projeto_id/tarefas",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"projetos",
+										":projeto_id",
+										"tarefas"
+									],
+									"variable": [
+										{
+											"id": "d5e96167-3e55-4ffd-9820-7be99a6310dc",
+											"key": "projeto_id",
+											"value": "5eb7cf5a86d9755df3a6c593",
+											"description": "(Required) "
+										}
+									]
+								}
+							},
+							"response": [
+								{
+									"id": "48260142-8d14cf62-d7aa-4328-b42e-f989c23635ac",
+									"name": "Successful Response",
+									"originalRequest": {
+										"method": "GET",
+										"header": [
+											{
+												"key": "Accept",
+												"value": "application/json"
+											}
+										],
+										"url": {
+											"raw": "{{baseUrl}}/projetos/:projeto_id/tarefas",
+											"host": [
+												"{{baseUrl}}"
+											],
+											"path": [
+												"projetos",
+												":projeto_id",
+												"tarefas"
+											],
+											"variable": [
+												{
+													"key": "projeto_id",
+													"value": "5eb7cf5a86d9755df3a6c593",
+													"description": "(Required) "
+												}
+											]
+										}
+									},
+									"status": "OK",
+									"code": 200,
+									"_postman_previewlanguage": "json",
+									"header": [
+										{
+											"key": "Content-Type",
+											"value": "application/json"
+										}
+									],
+									"cookie": [],
+									"responseTime": null,
+									"body": "[\n  {\n    \"nome\": \"string\",\n    \"prazo\": \"1959-10-20\",\n    \"projeto\": {\n      \"id\": \"string\",\n      \"collection\": \"string\"\n    },\n    \"responsavel\": {\n      \"id\": \"string\",\n      \"collection\": \"string\"\n    },\n    \"_id\": \"5eb7cf5a86d9755df3a6c593\",\n    \"descricao\": \"string\",\n    \"prioridade\": \"média\",\n    \"status\": \"não iniciada\",\n    \"dataCriacao\": \"1970-09-02T08:03:12.944Z\"\n  },\n  {\n    \"nome\": \"string\",\n    \"prazo\": \"1958-03-14\",\n    \"projeto\": {\n      \"id\": \"string\",\n      \"collection\": \"string\"\n    },\n    \"responsavel\": {\n      \"id\": \"string\",\n      \"collection\": \"string\"\n    },\n    \"_id\": \"5eb7cf5a86d9755df3a6c593\",\n    \"descricao\": \"string\",\n    \"prioridade\": \"média\",\n    \"status\": \"não iniciada\",\n    \"dataCriacao\": \"1947-09-16T20:08:02.621Z\"\n  }\n]"
+								},
+								{
+									"id": "48260142-adcf55ae-0470-4911-a2bc-a14acf2dc4e4",
+									"name": "Validation Error",
+									"originalRequest": {
+										"method": "GET",
+										"header": [
+											{
+												"key": "Accept",
+												"value": "application/json"
+											}
+										],
+										"url": {
+											"raw": "{{baseUrl}}/projetos/:projeto_id/tarefas",
+											"host": [
+												"{{baseUrl}}"
+											],
+											"path": [
+												"projetos",
+												":projeto_id",
+												"tarefas"
+											],
+											"variable": [
+												{
+													"key": "projeto_id",
+													"value": "5eb7cf5a86d9755df3a6c593",
+													"description": "(Required) "
+												}
+											]
+										}
+									},
+									"status": "Unprocessable Entity (WebDAV) (RFC 4918)",
+									"code": 422,
+									"_postman_previewlanguage": "json",
+									"header": [
+										{
+											"key": "Content-Type",
+											"value": "application/json"
+										}
+									],
+									"cookie": [],
+									"responseTime": null,
+									"body": "{\n  \"detail\": [\n    {\n      \"loc\": [\n        \"string\",\n        \"string\"\n      ],\n      \"msg\": \"string\",\n      \"type\": \"string\"\n    },\n    {\n      \"loc\": [\n        \"string\",\n        \"string\"\n      ],\n      \"msg\": \"string\",\n      \"type\": \"string\"\n    }\n  ]\n}"
+								}
+							]
+						}
+					],
+					"id": "48260142-45652dc7-6cd4-4193-bf46-0af542b223f3"
+				},
+				{
+					"name": "Listar Projetos",
+					"id": "48260142-e6bfac73-b4ea-4986-9125-2af37db14570",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/projetos",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"projetos"
+							]
+						}
+					},
+					"response": [
+						{
+							"id": "48260142-8fb8b5f2-eddf-49ce-95ab-0dcc5a97b533",
+							"name": "Successful Response",
+							"originalRequest": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Accept",
+										"value": "application/json"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/projetos",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"projetos"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"responseTime": null,
+							"body": "[\n  {\n    \"nome\": \"string\",\n    \"situacao\": \"string\",\n    \"prazo\": \"1995-06-13\",\n    \"responsavel\": {\n      \"id\": \"string\",\n      \"collection\": \"string\"\n    },\n    \"_id\": \"5eb7cf5a86d9755df3a6c593\",\n    \"descricao\": \"string\",\n    \"categoria\": \"string\"\n  },\n  {\n    \"nome\": \"string\",\n    \"situacao\": \"string\",\n    \"prazo\": \"1950-10-22\",\n    \"responsavel\": {\n      \"id\": \"string\",\n      \"collection\": \"string\"\n    },\n    \"_id\": \"5eb7cf5a86d9755df3a6c593\",\n    \"descricao\": \"string\",\n    \"categoria\": \"string\"\n  }\n]"
+						}
+					]
+				},
+				{
+					"name": "Criar Projeto",
+					"id": "48260142-fb0b6aaa-faa5-42c6-ba91-cde28e0cd705",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"nome\": \"string\",\n  \"responsavel_id\": \"string\",\n  \"situacao\": \"string\",\n  \"prazo\": \"2018-02-16\",\n  \"descricao\": \"string\",\n  \"categoria\": \"string\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/projetos",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"projetos"
+							]
+						}
+					},
+					"response": [
+						{
+							"id": "48260142-6ed298e0-ed16-49c1-9e1d-0b83084d4fcf",
+							"name": "Successful Response",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Accept",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"nome\": \"string\",\n  \"responsavel_id\": \"string\",\n  \"situacao\": \"string\",\n  \"prazo\": \"2018-02-16\",\n  \"descricao\": \"string\",\n  \"categoria\": \"string\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/projetos",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"projetos"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"responseTime": null,
+							"body": "{\n  \"nome\": \"string\",\n  \"situacao\": \"string\",\n  \"prazo\": \"1980-10-10\",\n  \"responsavel\": {\n    \"id\": \"string\",\n    \"collection\": \"string\"\n  },\n  \"_id\": \"5eb7cf5a86d9755df3a6c593\",\n  \"descricao\": \"string\",\n  \"categoria\": \"string\"\n}"
+						},
+						{
+							"id": "48260142-4390add5-e8cb-4e3b-a2e9-f1bc6c2e4d0c",
+							"name": "Validation Error",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Accept",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"nome\": \"string\",\n  \"responsavel_id\": \"string\",\n  \"situacao\": \"string\",\n  \"prazo\": \"2018-02-16\",\n  \"descricao\": \"string\",\n  \"categoria\": \"string\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl}}/projetos",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"projetos"
+									]
+								}
+							},
+							"status": "Unprocessable Entity (WebDAV) (RFC 4918)",
+							"code": 422,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"responseTime": null,
+							"body": "{\n  \"detail\": [\n    {\n      \"loc\": [\n        \"string\",\n        \"string\"\n      ],\n      \"msg\": \"string\",\n      \"type\": \"string\"\n    },\n    {\n      \"loc\": [\n        \"string\",\n        \"string\"\n      ],\n      \"msg\": \"string\",\n      \"type\": \"string\"\n    }\n  ]\n}"
+						}
+					]
+				}
+			],
+			"id": "48260142-7c1354ec-f7f3-429c-960a-660454467242"
+		},
+		{
+			"name": "Criar Tarefa",
+			"id": "48260142-31c1ae27-8024-4fd6-82b0-e8a3e212f34d",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Accept",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"nome\": \"string\",\n  \"projeto_id\": \"string\",\n  \"responsavel_id\": \"string\",\n  \"prazo\": \"1995-05-18\",\n  \"descricao\": \"string\",\n  \"prioridade\": \"média\",\n  \"status\": \"não iniciada\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/tarefas",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"tarefas"
+					]
+				}
+			},
+			"response": [
+				{
+					"id": "48260142-9f37fdfa-0948-4374-a60d-7712e8965884",
+					"name": "Successful Response",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"nome\": \"string\",\n  \"projeto_id\": \"string\",\n  \"responsavel_id\": \"string\",\n  \"prazo\": \"1995-05-18\",\n  \"descricao\": \"string\",\n  \"prioridade\": \"média\",\n  \"status\": \"não iniciada\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/tarefas",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"tarefas"
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"responseTime": null,
+					"body": "{\n  \"nome\": \"string\",\n  \"prazo\": \"1994-09-22\",\n  \"projeto\": {\n    \"id\": \"string\",\n    \"collection\": \"string\"\n  },\n  \"responsavel\": {\n    \"id\": \"string\",\n    \"collection\": \"string\"\n  },\n  \"_id\": \"5eb7cf5a86d9755df3a6c593\",\n  \"descricao\": \"string\",\n  \"prioridade\": \"média\",\n  \"status\": \"não iniciada\",\n  \"dataCriacao\": \"1961-04-11T17:04:32.883Z\"\n}"
+				},
+				{
+					"id": "48260142-b80d9986-1e62-4a37-9f75-0686bcb86243",
+					"name": "Validation Error",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"nome\": \"string\",\n  \"projeto_id\": \"string\",\n  \"responsavel_id\": \"string\",\n  \"prazo\": \"1995-05-18\",\n  \"descricao\": \"string\",\n  \"prioridade\": \"média\",\n  \"status\": \"não iniciada\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/tarefas",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"tarefas"
+							]
+						}
+					},
+					"status": "Unprocessable Entity (WebDAV) (RFC 4918)",
+					"code": 422,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"responseTime": null,
+					"body": "{\n  \"detail\": [\n    {\n      \"loc\": [\n        \"string\",\n        \"string\"\n      ],\n      \"msg\": \"string\",\n      \"type\": \"string\"\n    },\n    {\n      \"loc\": [\n        \"string\",\n        \"string\"\n      ],\n      \"msg\": \"string\",\n      \"type\": \"string\"\n    }\n  ]\n}"
+				}
+			]
+		},
+		{
+			"name": "Agendar Evento Calendario",
+			"id": "48260142-26bfbedc-2caf-404b-a8e4-a4d3eb3e7d64",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Accept",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"tipoEvento\": \"string\",\n  \"data_hora_evento\": \"1994-02-17T23:25:45.364Z\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/calendario",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"calendario"
+					]
+				}
+			},
+			"response": [
+				{
+					"id": "48260142-80af2e8a-6418-41fb-a75a-4bcf99a5be52",
+					"name": "Successful Response",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tipoEvento\": \"string\",\n  \"data_hora_evento\": \"1994-02-17T23:25:45.364Z\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/calendario",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"calendario"
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"responseTime": null,
+					"body": "{\n  \"tipoEvento\": \"string\",\n  \"data_hora_evento\": \"1952-11-07T22:25:17.588Z\",\n  \"_id\": \"5eb7cf5a86d9755df3a6c593\",\n  \"projeto\": {\n    \"id\": \"string\",\n    \"collection\": \"string\"\n  },\n  \"tarefa\": {\n    \"id\": \"string\",\n    \"collection\": \"string\"\n  }\n}"
+				},
+				{
+					"id": "48260142-55bd8ed9-2c71-47b8-b5da-cb98cd735f51",
+					"name": "Validation Error",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tipoEvento\": \"string\",\n  \"data_hora_evento\": \"1994-02-17T23:25:45.364Z\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/calendario",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"calendario"
+							]
+						}
+					},
+					"status": "Unprocessable Entity (WebDAV) (RFC 4918)",
+					"code": 422,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"responseTime": null,
+					"body": "{\n  \"detail\": [\n    {\n      \"loc\": [\n        \"string\",\n        \"string\"\n      ],\n      \"msg\": \"string\",\n      \"type\": \"string\"\n    },\n    {\n      \"loc\": [\n        \"string\",\n        \"string\"\n      ],\n      \"msg\": \"string\",\n      \"type\": \"string\"\n    }\n  ]\n}"
+				}
+			]
+		},
+		{
+			"name": "Dialogflow Webhook",
+			"id": "48260142-8c88d700-d65d-4087-9d6c-5f2e3f8b14c4",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Accept",
+						"value": "application/json"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/webhook",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"webhook"
+					]
+				}
+			},
+			"response": [
+				{
+					"id": "48260142-5328cebb-af66-460a-be71-fb7506fc40e1",
+					"name": "Successful Response",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/webhook",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"webhook"
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"responseTime": null,
+					"body": "{}"
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"id": "8e4a19cb-d69f-492c-a532-d7f1e8db4667",
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"id": "fccec297-a318-4188-8eea-1354b0528805",
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "https://ache-flow-back.onrender.com"
+		}
+	]
+}

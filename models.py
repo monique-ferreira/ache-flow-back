@@ -1,6 +1,6 @@
 # models.py
 from datetime import datetime, date
-from typing import Optional, List
+from typing import Optional, List, Any, Dict
 from beanie import Document, Link
 from pydantic import BaseModel, EmailStr, Field
 from enum import Enum
@@ -20,9 +20,9 @@ class Funcionario(Document):
     nome: str
     sobrenome: str
     email: EmailStr
-    senha: str # Em um ambiente real, isso deveria ser um hash!
+    senha: str
     cargo: Optional[str] = None
-    departamento: Optional[str] = None # NOVO CAMPO ADICIONADO
+    departamento: Optional[str] = None
     fotoPerfil: Optional[str] = None
     dataCadastro: datetime = Field(default_factory=datetime.now)
 
@@ -46,16 +46,30 @@ class Tarefa(Document):
     prioridade: PrioridadeTarefa = PrioridadeTarefa.MEDIA
     status: StatusTarefa = StatusTarefa.NAO_INICIADA
     dataCriacao: datetime = Field(default_factory=datetime.now)
-    dataConclusao: Optional[date] = None # NOVO CAMPO ADICIONADO
+    dataConclusao: Optional[date] = None
     prazo: date
     projeto: Link[Projeto]
     responsavel: Link[Funcionario]
+    numero: Optional[str] = None
+    classificacao: Optional[str] = None
+    fase: Optional[str] = None
+    condicao: Optional[str] = None
+    documento_referencia: Optional[str] = None
+    concluido: Optional[bool] = False
 
     class Settings:
         name = "tarefas"
 
-# --- Models para Update (Boas práticas para o CRUD) ---
+class Calendario(Document):
+    tipoEvento: str
+    data_hora_evento: datetime
+    projeto: Optional[Link[Projeto]] = None
+    tarefa: Optional[Link[Tarefa]] = None
 
+    class Settings:
+        name = "calendario"
+
+# --- Models para Update ---
 class FuncionarioUpdate(BaseModel):
     nome: Optional[str] = None
     sobrenome: Optional[str] = None
@@ -79,17 +93,21 @@ class TarefaUpdate(BaseModel):
     status: Optional[StatusTarefa] = None
     prazo: Optional[date] = None
     responsavel_id: Optional[str] = None
-    # O projeto de uma tarefa geralmente não muda, mas poderia ser adicionado se necessário
 
-# --- Models Originais para Create ---
+class CalendarioUpdate(BaseModel):
+    tipoEvento: Optional[str] = None
+    data_hora_evento: Optional[datetime] = None
+    projeto_id: Optional[str] = None
+    tarefa_id: Optional[str] = None
 
+# --- Models para Create ---
 class FuncionarioCreate(BaseModel):
     nome: str
     sobrenome: str
     email: EmailStr
     senha: str
     cargo: Optional[str] = None
-    departamento: Optional[str] = None # CAMPO ADICIONADO
+    departamento: Optional[str] = None
     fotoPerfil: Optional[str] = None
 
 class ProjetoCreate(BaseModel):
@@ -108,10 +126,35 @@ class TarefaCreate(BaseModel):
     prioridade: PrioridadeTarefa = PrioridadeTarefa.MEDIA
     status: StatusTarefa = StatusTarefa.NAO_INICIADA
     prazo: date
+    numero: Optional[str] = None
+    classificacao: Optional[str] = None
+    fase: Optional[str] = None
+    condicao: Optional[str] = None
+    documento_referencia: Optional[str] = None
+    concluido: Optional[bool] = False
 
+class CalendarioCreate(BaseModel):
+    tipoEvento: str
+    data_hora_evento: datetime
+    projeto_id: Optional[str] = None
+    tarefa_id: Optional[str] = None
+
+# --- Models para Autenticação e Chat ---
 class Token(BaseModel):
     access_token: str
     token_type: str
 
 class TokenData(BaseModel):
     email: Optional[str] = None
+
+class ChatRequest(BaseModel):
+    pergunta: str
+
+# --- MODELO DE RESPOSTA PADRONIZADO PARA A IA ---
+class AIResponse(BaseModel):
+    """
+    Define uma estrutura de resposta padronizada para qualquer interação com a IA.
+    """
+    tipo_resposta: str
+    conteudo_texto: str
+    dados: Optional[Dict[str, Any]] = None
