@@ -23,4 +23,4 @@ EXPOSE 8000
 # 6. Comando para iniciar a aplicação quando o contêiner for executado
 # Usamos o Gunicorn para gerenciar 4 workers Uvicorn em produção.
 # O host 0.0.0.0 é necessário para que a aplicação seja acessível de fora do contêiner.
-CMD ["gunicorn", "-w", "2", "--timeout", "120", "-k", "uvicorn.workers.UvicornWorker", "main:app", "--bind", "0.0.0.0:$PORT"]
+CMD gunicorn -w 2 --timeout 120 -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:$PORT
