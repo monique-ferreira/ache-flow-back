@@ -24,7 +24,7 @@ from models import (
 )
 
 # NOVOS módulos
-from ingest import ingest_file, ingest_from_doc_link, ingest_from_doc_links
+from ingest import ingest_file, ingest_from_doc_link, ingest_from_doc_links, ingest_from_sheet_or_csv_url  # NOVO
 from command_router import handle_command
 
 @asynccontextmanager
@@ -406,6 +406,19 @@ async def ingest_links(
     limitar_linhas = payload.get("limitar_linhas")
     result = await ingest_from_doc_links(urls, pick_index=pegar_indice, limit_rows=limitar_linhas)
     return JSONResponse(result)
+
+@app.post("/ingest/planilha", tags=["Ingestão"])
+async def ingest_planilha_por_url(
+    payload: dict = Body(..., example={"url": "https://docs.google.com/spreadsheets/d/..../edit?usp=sharing", "limitar_linhas": 100}),
+    current_user: Funcionario = Depends(auth.get_usuario_logado)
+):
+    url = payload.get("url")
+    if not url or not isinstance(url, str):
+        raise HTTPException(status_code=400, detail="Campo 'url' é obrigatório.")
+    limitar_linhas = payload.get("limitar_linhas")
+    result = await ingest_from_sheet_or_csv_url(url, limit_rows=limitar_linhas)
+    return JSONResponse(result)
+
 
 # --- Webhook (Dialogflow) ---
 @app.post("/webhook", tags=["Dialogflow"])

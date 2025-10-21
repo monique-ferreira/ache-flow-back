@@ -283,3 +283,17 @@ async def ingest_from_doc_links(
         "documentos_processados": count,
         "resultados": results
     }
+
+# --- NOVO: ingestão direta de planilha/CSV por URL ---
+async def ingest_from_sheet_or_csv_url(url: str, limit_rows: Optional[int] = None) -> Dict[str, Any]:
+    """
+    Lê uma tabela diretamente de uma URL (Google Sheets, CSV, XLSX, HTML com tabela)
+    e roteia para criação de Projetos/Tarefas/Pessoas conforme o layout detectado.
+    """
+    try:
+        df = _read_tabular_from_url(url, limit_rows)
+        if df is None:
+            return {"type": "ignorado", "criados": 0, "erros": ["Não foi possível ler tabela."]}
+        return await _route_df(df)
+    except Exception as e:
+        return {"type": "erro", "criados": 0, "erros": [str(e)]}
