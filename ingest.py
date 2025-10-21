@@ -208,30 +208,71 @@ def _guess_export_url(u: str, sheet_index: Optional[int]) -> Tuple[str, Optional
         return u, "csv"
     return u, None
 
+def _normalize_google_sheet_url(url: str) -> str:
+    """
+    Converte links /edit do Google Sheets para /export?format=csv (&gid=).
+    Mantém outros links intactos.
+    """
+    if "docs.google.com/spreadsheets" not in url:
+        return url
+
+    m = re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", url)
+    if not m:
+        return url
+
+    sheet_id = m.group(1)
+    gid_match = re.search(r"[?#]gid=(\d+)", url)
+    gid = gid_match.group(1) if gid_match else None
+
+    out = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
+    if gid:
+        out += f"&gid={gid}"
+    return out
+
+
 def _read_tabular_from_url(u: str, limit_rows: Optional[int]) -> Optional[pd.DataFrame]:
-    url_export, ext = _guess_export_url(u, sheet_index=None)
-    r = requests.get(url_export, timeout=60)
-    r.raise_for_status()
-    content = r.content
-    if ext == "csv":
-        df = pd.read_csv(io.BytesIO(content))
-    elif ext == "xlsx":
-        df = pd.read_excel(io.BytesIO(content))
-    else:
-        # tenta extrair primeira tabela HTML
-        try:
-            df_list = pd.read_html(io.BytesIO(content))
-        except Exception:
+    """
+    Faz download e leitura de uma tabela tabular (CSV, XLSX ou HTML com <table>).
+    Adiciona suporte automático para Google Sheets em modo /edit.
+    """
+    import io
+    import pandas as pd
+    import requests
+
+    try:
+        # Normaliza Google Sheets antes de gerar export URL
+        u = _normalize_google_sheet_url(u)
+
+        url_export, ext = _guess_export_url(u, sheet_index=None)
+        r = requests.get(url_export, timeout=60)
+        r.raise_for_status()
+        content = r.content
+
+        if ext == "csv":
+            df = pd.read_csv(io.BytesIO(content))
+        elif ext == "xlsx":
+            df = pd.read_excel(io.BytesIO(content))
+        else:
+            # tenta extrair primeira tabela HTML
             try:
-                df_list = pd.read_html(content.decode("utf-8", errors="ignore"))
+                df_list = pd.read_html(io.BytesIO(content))
             except Exception:
-                df_list = []
-        if not df_list:
-            return None
-        df = df_list[0]
-    if limit_rows is not None:
-        df = df.head(limit_rows)
-    return df
+                try:
+                    df_list = pd.read_html(content.decode("utf-8", errors="ignore"))
+                except Exception:
+                    df_list = []
+            if not df_list:
+                raise ValueError("Nenhuma tabela encontrada no conteúdo HTML.")
+            df = df_list[0]
+
+        if limit_rows is not None:
+            df = df.head(limit_rows)
+
+        return df
+
+    except Exception as e:
+        print(f"[ERRO] Falha lendo tabela de {u}: {e}")
+        return None
 
 async def follow_links_and_ingest(links: List[str], pick_index: Optional[int]=None, limit_rows: Optional[int]=None) -> Dict[str, Any]:
     """

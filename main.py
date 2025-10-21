@@ -107,22 +107,45 @@ async def login_para_obter_token(form_data: OAuth2PasswordRequestForm = Depends(
     return {"access_token": token_acesso, "token_type": "bearer"}
 
 # --- CHAT IA + COMANDOS ---
-@app.post("/ai/chat", response_model=AIResponse, tags=["IA Generativa"], summary="Processa pergunta usando IA. Se detectar comando, executa antes.")
+# --- CHAT IA + COMANDOS ---
+@app.post(
+    "/ai/chat",
+    response_model=AIResponse,
+    tags=["IA Generativa"],
+    summary="Processa pergunta usando IA. Se detectar comando, executa antes."
+)
 async def processar_chat_ia(
     chat_request: ChatRequest,
     current_user: Funcionario = Depends(auth.get_usuario_logado)
 ):
-    # 1) Tenta executar um comando (ação direta)
-    cmd_result = await handle_command(chat_request.pergunta)
-    if cmd_result:
-        msg_cmd = cmd_result["mensagem"]
-        ai = await obter_resposta_ia(f"{chat_request.pergunta}\n\nResumo: {msg_cmd}", current_user)
-        ai.conteudo_texto = f"{msg_cmd}\n\n{ai.conteudo_texto}"
-        ai.tipo_resposta = "ACOES+TEXTO"
-        return ai
+    pergunta = chat_request.pergunta or ""
 
-    # 2) Caso contrário, apenas IA
-    return await obter_resposta_ia(chat_request.pergunta, current_user)
+    # 1) Tenta executar um comando (ação direta)
+    try:
+        cmd_result = await handle_command(pergunta)
+    except Exception as e:
+        cmd_result = {"executado": False, "mensagem": f"Falha ao processar comando: {e}"}
+
+    if cmd_result is not None:
+        # ✅ CURTO-CIRCUITO: não chama a IA quando existe retorno do roteador
+        # (se executou ou se falhou, retorna a mensagem explicativa)
+        tipo = "ACOES" if cmd_result.get("executado") else "ACOES_FALHOU"
+        return AIResponse(
+            tipo_resposta=tipo,
+            conteudo_texto=cmd_result.get("mensagem", "Comando processado."),
+            dados=None
+        )
+
+    # 2) Sem comando → chama a IA normalmente
+    try:
+        return await obter_resposta_ia(pergunta, current_user)
+    except Exception:
+        # Resposta de fallback única (sem duplicar erro)
+        return AIResponse(
+            tipo_resposta="ERRO",
+            conteudo_texto="Desculpe, tive um problema ao tentar gerar sua resposta. Por favor, tente novamente.",
+            dados=None
+        )
 
 # --- CRUDs (existentes) ---
 @app.post("/funcionarios", response_model=Funcionario, tags=["Funcionários"])
