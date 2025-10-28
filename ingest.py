@@ -1,340 +1,457 @@
 # ingest.py
 import io
+from typing import Dict, Any, Optional, Tuple, List
+from datetime import date, timedelta
 import re
-from typing import List, Optional, Tuple, Dict, Any, Iterable
-from datetime import date
+
 import pandas as pd
-import requests
 from bs4 import BeautifulSoup
-from docx import Document  # para .docx
+import requests
+from docx import Document as DocxDocument
 from beanie import PydanticObjectId
+
+from pdfminer.high_level import extract_text as pdf_extract_text
+from PyPDF2 import PdfReader
+from openpyxl import load_workbook
 
 from models import (
     Funcionario, Projeto, Tarefa,
-    TarefaCreate, ProjetoCreate, PrioridadeTarefa, StatusTarefa
+    TarefaCreate, PrioridadeTarefa, StatusTarefa, CondicaoTarefa
 )
 
-# ---------------------------
-# Utilidades de detecção
-# ---------------------------
-def _is_tasks_df(df: pd.DataFrame) -> bool:
-    cols = set(c.lower() for c in df.columns)
-    required = {"nome da tarefa", "prazo", "nome do projeto", "email responsável"}
-    return required.issubset(cols)
-
-def _is_projects_df(df: pd.DataFrame) -> bool:
-    cols = set(c.lower() for c in df.columns)
-    required = {"nome do projeto", "responsável (email)", "prazo", "situação"}
-    return required.issubset(cols)
-
-def _is_people_df(df: pd.DataFrame) -> bool:
-    cols = set(c.lower() for c in df.columns)
-    required = {"nome", "sobrenome", "email"}
-    return required.issubset(cols)
-
-def _normalize_bool(v: Any) -> bool:
-    if isinstance(v, bool): return v
-    if v is None: return False
+# =========================
+# Helpers gerais
+# =========================
+def _normalize_bool(v):
+    if isinstance(v, bool):
+        return v
+    if v is None:
+        return False
     s = str(v).strip().lower()
-    return s in {"true","1","sim","yes","verdadeiro"}
+    return s in {"1", "true", "t", "sim", "yes", "y", "concluida", "concluído", "done"}
 
-# ---------------------------
-# Roteamento DataFrame -> DB
-# ---------------------------
-async def _ingest_tasks_df(df: pd.DataFrame) -> Dict[str, Any]:
-    created, errors = 0, []
-    for i, row in df.iterrows():
-        try:
-            projeto = await Projeto.find_one(Projeto.nome == row["Nome do Projeto"])
-            if not projeto:
-                errors.append(f"Linha {i+2}: Projeto '{row['Nome do Projeto']}' não encontrado.")
-                continue
-            responsavel = await Funcionario.find_one(Funcionario.email == row["Email Responsável"])
-            if not responsavel:
-                errors.append(f"Linha {i+2}: Responsável '{row['Email Responsável']}' não encontrado.")
-                continue
-
-            prioridade = str(row.get("Prioridade","média")).lower()
-            if prioridade not in {"baixa","média","media","alta"}:
-                prioridade = "média"
-            if prioridade == "media": prioridade = "média"
-
-            status = str(row.get("Status","não iniciada")).lower()
-            if status not in {"em andamento","congelada","não iniciada","nao iniciada","concluída","concluida"}:
-                status = "não iniciada"
-            if status == "nao iniciada": status = "não iniciada"
-            if status == "concluida": status = "concluída"
-
-            concluido = _normalize_bool(row.get("Concluído", False))
-
-            data = TarefaCreate(
-                nome=row["Nome da Tarefa"],
-                projeto_id=str(projeto.id),
-                responsavel_id=str(responsavel.id),
-                descricao=row.get("Descrição"),
-                prioridade=PrioridadeTarefa(prioridade),
-                status=StatusTarefa(status),
-                prazo=pd.to_datetime(row["Prazo"]).date(),
-                numero=row.get("Número"),
-                classificacao=row.get("Classificação"),
-                fase=row.get("Fase"),
-                condicao=row.get("Condição"),
-                documento_referencia=row.get("Documento de Referência"),
-                concluido=concluido
-            )
-            tarefa = Tarefa(**data.dict(exclude={"projeto_id","responsavel_id"}),
-                            projeto=projeto, responsavel=responsavel)
-            await tarefa.insert()
-            created += 1
-        except Exception as e:
-            errors.append(f"Linha {i+2}: {e}")
-    return {"type":"tarefas", "criados": created, "erros": errors}
-
-async def _ingest_projects_df(df: pd.DataFrame) -> Dict[str, Any]:
-    created, errors = 0, []
-    for i, row in df.iterrows():
-        try:
-            resp = await Funcionario.find_one(Funcionario.email == row["Responsável (email)"])
-            if not resp:
-                errors.append(f"Linha {i+2}: Responsável '{row['Responsável (email)']}' não encontrado.")
-                continue
-            data = ProjetoCreate(
-                nome=row["Nome do Projeto"],
-                responsavel_id=str(resp.id),
-                descricao=row.get("Descrição"),
-                categoria=row.get("Categoria"),
-                situacao=row["Situação"],
-                prazo=pd.to_datetime(row["Prazo"]).date()
-            )
-            projeto = Projeto(**data.dict(exclude={"responsavel_id"}), responsavel=resp)
-            await projeto.insert()
-            created += 1
-        except Exception as e:
-            errors.append(f"Linha {i+2}: {e}")
-    return {"type":"projetos", "criados": created, "erros": errors}
-
-async def _ingest_people_df(df: pd.DataFrame) -> Dict[str, Any]:
-    created, errors, skipped_dupes = 0, [], 0
-    for i, row in df.iterrows():
-        try:
-            email = row["Email"]
-            exists = await Funcionario.find_one(Funcionario.email == email)
-            if exists:
-                skipped_dupes += 1
-                continue
-            fun = Funcionario(
-                nome=row["Nome"],
-                sobrenome=row["Sobrenome"],
-                email=email,
-                senha="hash-placeholder",  # substitua se quiser fluxo de login por ingestão
-                cargo=row.get("Cargo"),
-                departamento=row.get("Departamento"),
-                fotoPerfil=row.get("Foto")
-            )
-            await fun.insert()
-            created += 1
-        except Exception as e:
-            errors.append(f"Linha {i+2}: {e}")
-    return {"type":"funcionarios", "criados": created, "ignorados_existentes": skipped_dupes, "erros": errors}
-
-async def _route_df(df: pd.DataFrame) -> Dict[str, Any]:
-    df.columns = [c.strip() for c in df.columns]
-    if _is_tasks_df(df):
-        return await _ingest_tasks_df(df)
-    if _is_projects_df(df):
-        return await _ingest_projects_df(df)
-    if _is_people_df(df):
-        return await _ingest_people_df(df)
-    return {"type":"desconhecido","criados":0,"erros":["Layout de colunas não reconhecido."]}
-
-# ---------------------------
-# Entrada por ARQUIVO
-# ---------------------------
-async def ingest_file(filename: str, contents: bytes) -> Dict[str, Any]:
+def _fetch_url_text(u: str) -> str:
+    """Busca texto essencial de uma URL (HTML)."""
     try:
-        if filename.lower().endswith(".csv"):
-            df = pd.read_csv(io.BytesIO(contents))
-            return await _route_df(df)
-        elif filename.lower().endswith(".xlsx"):
-            df = pd.read_excel(io.BytesIO(contents))
-            return await _route_df(df)
-        elif filename.lower().endswith(".docx"):
-            links = extract_links_from_docx(io.BytesIO(contents))
-            return await follow_links_and_ingest(links)
-        else:
-            return {"type":"desconhecido","criados":0,"erros":[f"Formato não suportado: {filename}"]}
-    except Exception as e:
-        return {"type":"erro","criados":0,"erros":[str(e)]}
-
-# ---------------------------
-# Entrada por LINK de DOC
-# ---------------------------
-def fetch_text(url: str) -> str:
-    resp = requests.get(url, timeout=30)
-    resp.raise_for_status()
-    return resp.text
-
-def extract_links_from_html(html: str) -> List[str]:
-    soup = BeautifulSoup(html, "html.parser")
-    links = []
-    for a in soup.find_all("a", href=True):
-        links.append(a["href"])
-    return links
-
-def extract_links_from_docx(filelike) -> List[str]:
-    doc = Document(filelike)
-    links = []
-    # varredura por relationships (método mais robusto no python-docx)
-    for rel in doc.part.rels.values():
-        if "hyperlink" in rel.reltype and rel.target_ref:
-            links.append(rel.target_ref)
-    return list(dict.fromkeys(links))
-
-def _guess_export_url(u: str, sheet_index: Optional[int]) -> Tuple[str, Optional[str]]:
-    """
-    Produz uma URL exportável quando possível.
-    """
-    if "docs.google.com/spreadsheets" in u:
-        gid_match = re.search(r"[?&]gid=(\d+)", u)
-        gid = gid_match.group(1) if gid_match else None
-        base = re.sub(r"/edit.*","",u)
-        if gid:
-            return f"{base}/export?format=csv&gid={gid}", "csv"
-        else:
-            return f"{base}/export?format=csv", "csv"
-    if u.lower().endswith((".xlsx",".xls")):
-        return u, "xlsx"
-    if u.lower().endswith(".csv"):
-        return u, "csv"
-    return u, None
-
-def _normalize_google_sheet_url(url: str) -> str:
-    """
-    Converte links /edit do Google Sheets para /export?format=csv (&gid=).
-    Mantém outros links intactos.
-    """
-    if "docs.google.com/spreadsheets" not in url:
-        return url
-
-    m = re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", url)
-    if not m:
-        return url
-
-    sheet_id = m.group(1)
-    gid_match = re.search(r"[?#]gid=(\d+)", url)
-    gid = gid_match.group(1) if gid_match else None
-
-    out = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
-    if gid:
-        out += f"&gid={gid}"
-    return out
-
-
-def _read_tabular_from_url(u: str, limit_rows: Optional[int]) -> Optional[pd.DataFrame]:
-    """
-    Faz download e leitura de uma tabela tabular (CSV, XLSX ou HTML com <table>).
-    Adiciona suporte automático para Google Sheets em modo /edit.
-    """
-    import io
-    import pandas as pd
-    import requests
-
-    try:
-        # Normaliza Google Sheets antes de gerar export URL
-        u = _normalize_google_sheet_url(u)
-
-        url_export, ext = _guess_export_url(u, sheet_index=None)
-        r = requests.get(url_export, timeout=60)
+        r = requests.get(u, timeout=20)
         r.raise_for_status()
-        content = r.content
+        soup = BeautifulSoup(r.text, "html.parser")
+        main = soup.find("main") or soup.find("article") or soup.body
+        return main.get_text(separator="\n", strip=True)[:15000] if main else soup.get_text(separator="\n", strip=True)[:15000]
+    except Exception:
+        return ""
 
-        if ext == "csv":
-            df = pd.read_csv(io.BytesIO(content))
-        elif ext == "xlsx":
-            df = pd.read_excel(io.BytesIO(content))
-        else:
-            # tenta extrair primeira tabela HTML
-            try:
-                df_list = pd.read_html(io.BytesIO(content))
-            except Exception:
-                try:
-                    df_list = pd.read_html(content.decode("utf-8", errors="ignore"))
-                except Exception:
-                    df_list = []
-            if not df_list:
-                raise ValueError("Nenhuma tabela encontrada no conteúdo HTML.")
-            df = df_list[0]
-
-        if limit_rows is not None:
-            df = df.head(limit_rows)
-
-        return df
-
-    except Exception as e:
-        print(f"[ERRO] Falha lendo tabela de {u}: {e}")
+def _fetch_bytes(u: str) -> Optional[bytes]:
+    try:
+        r = requests.get(u, timeout=40)
+        r.raise_for_status()
+        return r.content
+    except Exception:
         return None
 
-async def follow_links_and_ingest(links: List[str], pick_index: Optional[int]=None, limit_rows: Optional[int]=None) -> Dict[str, Any]:
-    """
-    - Se pick_index for None: percorre todos os links e tenta ingerir.
-    - Se pick_index >=1: pega só o N-ésimo link (ex.: 'terceira planilha' => pick_index=3).
-    """
-    picked = [links[pick_index-1]] if pick_index and 1 <= pick_index <= len(links) else links
-    summary = []
-    for u in picked:
-        try:
-            df = _read_tabular_from_url(u, limit_rows)
-            if df is None:
-                summary.append({"link": u, "resultado": {"type":"ignorado","criados":0,"erros":["Não foi possível ler tabela."]}})
-                continue
-            res = await _route_df(df)
-            summary.append({"link": u, "resultado": res})
-        except Exception as e:
-            summary.append({"link": u, "resultado": {"type":"erro","criados":0,"erros":[str(e)]}})
-    return {"links_processados": len(picked), "itens": summary}
-
-async def ingest_from_doc_link(doc_url: str, pick_index: Optional[int]=None, limit_rows: Optional[int]=None) -> Dict[str, Any]:
-    """
-    Baixa o DOC/HTML (Google Docs ou Word publicado na web), extrai hiperlinks e segue.
-    """
-    html = fetch_text(doc_url)
-    links = extract_links_from_html(html)
-    return await follow_links_and_ingest(links, pick_index=pick_index, limit_rows=limit_rows)
-
-# --- NOVO: ingestão de múltiplos DOCs com hyperlinks ---
-async def ingest_from_doc_links(
-    doc_urls: Iterable[str],
-    pick_index: Optional[int] = None,
-    limit_rows: Optional[int] = None
-) -> Dict[str, Any]:
-    """
-    Processa vários documentos (Google Docs/Word publicado na web), extrai hyperlinks
-    de cada um e segue para ingestão. Retorna um resumo por documento.
-    """
-    results = []
-    count = 0
-    for url in doc_urls:
-        count += 1
-        try:
-            res = await ingest_from_doc_link(url, pick_index=pick_index, limit_rows=limit_rows)
-            results.append({"doc_url": url, "ok": True, "resultado": res})
-        except Exception as e:
-            results.append({"doc_url": url, "ok": False, "erro": str(e)})
-    return {
-        "documentos_processados": count,
-        "resultados": results
-    }
-
-# --- NOVO: ingestão direta de planilha/CSV por URL ---
-async def ingest_from_sheet_or_csv_url(url: str, limit_rows: Optional[int] = None) -> Dict[str, Any]:
-    """
-    Lê uma tabela diretamente de uma URL (Google Sheets, CSV, XLSX, HTML com tabela)
-    e roteia para criação de Projetos/Tarefas/Pessoas conforme o layout detectado.
-    """
+def _extract_pdf_text_from_bytes(bin_: bytes) -> str:
+    """Tenta extrair texto do PDF primeiro com pdfminer; se falhar, usa PyPDF2."""
     try:
-        df = _read_tabular_from_url(url, limit_rows)
-        if df is None:
-            return {"type": "ignorado", "criados": 0, "erros": ["Não foi possível ler tabela."]}
-        return await _route_df(df)
-    except Exception as e:
-        return {"type": "erro", "criados": 0, "erros": [str(e)]}
+        # pdfminer é mais completo
+        bio = io.BytesIO(bin_)
+        txt = pdf_extract_text(bio)
+        if txt and txt.strip():
+            return txt.strip()
+    except Exception:
+        pass
+
+    # fallback com PyPDF2
+    try:
+        bio2 = io.BytesIO(bin_)
+        reader = PdfReader(bio2)
+        parts = []
+        for page in reader.pages:
+            try:
+                parts.append(page.extract_text() or "")
+            except Exception:
+                parts.append("")
+        return "\n".join(parts).strip()
+    except Exception:
+        return ""
+
+def _extract_pdf_text_from_url(u: str) -> str:
+    bin_ = _fetch_bytes(u)
+    if not bin_:
+        return ""
+    return _extract_pdf_text_from_bytes(bin_)
+
+def _read_tabular_from_url(u: str, limit_rows: Optional[int] = None) -> Optional[pd.DataFrame]:
+    """Mantido para compat: CSV/Sheets/Excel direto via URL (sem hiperlink por célula)."""
+    try:
+        if u.endswith(".xlsx") or u.endswith(".xls"):
+            bin_ = requests.get(u, timeout=20).content
+            df = pd.read_excel(io.BytesIO(bin_))
+            if limit_rows:
+                df = df.head(limit_rows)
+            return df
+        if "docs.google.com/spreadsheets" in u:
+            if "export?format=csv" not in u:
+                if "/edit" in u:
+                    u = u.split("/edit")[0] + "/export?format=csv"
+            bin_ = requests.get(u, timeout=20).content
+            df = pd.read_csv(io.BytesIO(bin_))
+            if limit_rows:
+                df = df.head(limit_rows)
+            return df
+        if u.endswith(".csv"):
+            bin_ = requests.get(u, timeout=20).content
+            df = pd.read_csv(io.BytesIO(bin_))
+            if limit_rows:
+                df = df.head(limit_rows)
+            return df
+    except Exception:
+        return None
+    return None
+
+
+# =========================
+# Ingestão principal (com hiperlink -> PDF -> "Como fazer?")
+# =========================
+async def ingest_xlsx(file_bytes: bytes, usar_pdf_para_como_fazer: bool = True) -> Dict[str, Any]:
+    """
+    Lê planilha XLSX preservando hiperlinks e insere tarefas.
+    Se usar_pdf_para_como_fazer=True, baixa o PDF do hiperlink de "Documento de Referência"
+    e usa o texto extraído para preencher o campo "como_fazer" (quando este vier vazio).
+    """
+    wb = load_workbook(io.BytesIO(file_bytes), data_only=True)
+    ws = wb.active  # primeira aba
+
+    # descobrir cabeçalho (primeira linha não vazia)
+    header_row_idx = None
+    for r in range(1, ws.max_row + 1):
+        row_vals = [ws.cell(r, c).value for c in range(1, ws.max_column + 1)]
+        if any(v is not None and str(v).strip() for v in row_vals):
+            header_row_idx = r
+            break
+    if not header_row_idx:
+        return {"criadas": 0, "erros": ["Não encontrei cabeçalho na planilha."]}
+
+    headers: List[str] = []
+    col_index_map: Dict[str, int] = {}
+    for c in range(1, ws.max_column + 1):
+        v = ws.cell(header_row_idx, c).value
+        name = (str(v).strip() if v is not None else f"COL_{c}")
+        headers.append(name)
+        col_index_map[name] = c
+
+    def get_cell(row_idx: int, *names: str):
+        for n in names:
+            if n in col_index_map:
+                return ws.cell(row_idx, col_index_map[n])
+        return None
+
+    def get_val(row_idx: int, *names: str):
+        cell = get_cell(row_idx, *names)
+        return None if cell is None else cell.value
+
+    created, errors = 0, []
+    for r in range(header_row_idx + 1, ws.max_row + 1):
+        # linha vazia? pula
+        if not any(ws.cell(r, c).value is not None and str(ws.cell(r, c).value).strip() for c in range(1, ws.max_column + 1)):
+            continue
+        try:
+            nome_proj = get_val(r, "Nome do Projeto", "Projeto")
+            if not nome_proj:
+                errors.append(f"Linha {r}: 'Nome do Projeto' é obrigatório.")
+                continue
+            projeto = await Projeto.find_one(Projeto.nome == str(nome_proj).strip())
+            if not projeto:
+                errors.append(f"Linha {r}: Projeto '{nome_proj}' não encontrado.")
+                continue
+
+            email_resp = get_val(r, "Email Responsável", "Responsável", "Email")
+            if not email_resp:
+                errors.append(f"Linha {r}: 'Email Responsável' é obrigatório.")
+                continue
+            responsavel = await Funcionario.find_one(Funcionario.email == str(email_resp).strip())
+            if not responsavel:
+                errors.append(f"Linha {r}: Responsável '{email_resp}' não encontrado.")
+                continue
+
+            nome_tarefa = get_val(r, "Nome da Tarefa", "Tarefa", "Nome")
+            if not nome_tarefa:
+                errors.append(f"Linha {r}: 'Nome da Tarefa' é obrigatório.")
+                continue
+
+            # campos descritivos
+            cell_como_fazer = get_cell(r, "Como fazer?", "Descrição")
+            como_fazer = cell_como_fazer.value.strip() if (cell_como_fazer and isinstance(cell_como_fazer.value, str)) else None
+
+            categoria = (get_val(r, "Categoria", "Classificação") or None)
+            fase = (get_val(r, "Fase") or None)
+
+            # documento de referência - CAPTURA DO HIPERLINK
+            cell_doc = get_cell(r, "Documento de Referência", "Documento referência", "Documento")
+            doc_ref_value = None if cell_doc is None else (cell_doc.value if not isinstance(cell_doc.value, str) else cell_doc.value.strip())
+            doc_ref_link = None if cell_doc is None else (cell_doc.hyperlink.target if cell_doc.hyperlink else None)
+            documento_referencia = doc_ref_link or doc_ref_value
+
+            # prioridade (opcional)
+            prioridade_raw = get_val(r, "Prioridade")
+            prioridade = None
+            if isinstance(prioridade_raw, str):
+                p = prioridade_raw.strip().lower()
+                if p == "media": p = "média"
+                if p in {"baixa", "média", "alta"}:
+                    prioridade = PrioridadeTarefa(p)
+
+            # condição
+            cond_raw = get_val(r, "Condição", "Condicao")
+            cond = CondicaoTarefa.SEMPRE
+            if isinstance(cond_raw, str):
+                cc = cond_raw.strip().upper()
+                if cc in {"SEMPRE", "A", "B", "C"}:
+                    cond = CondicaoTarefa(cc)
+
+            # porcentagem
+            porc = get_val(r, "Porcentagem")
+            if porc is None:
+                porc = 100 if _normalize_bool(get_val(r, "Concluído", "Concluida")) else 0
+            try:
+                porc = int(float(porc))
+            except Exception:
+                porc = 0
+            porc = max(0, min(100, porc))
+
+            # datas
+            dt_ini = get_val(r, "Data de Início")
+            dt_fim = get_val(r, "Data de Fim")
+            prazo_legado = get_val(r, "Prazo")
+            exp_dias = get_val(r, "Exportação (dias)")
+
+            dt_inicio = pd.to_datetime(dt_ini, errors="coerce") if dt_ini is not None else None
+            dt_final = pd.to_datetime(dt_fim, errors="coerce") if dt_fim is not None else None
+
+            if dt_final is pd.NaT or dt_final is None:
+                prazo_dt = pd.to_datetime(prazo_legado, errors="coerce") if prazo_legado is not None else None
+                if prazo_dt is not None and prazo_dt is not pd.NaT:
+                    dt_final = prazo_dt
+
+            if (dt_final is pd.NaT or dt_final is None) and dt_inicio is not None and pd.notna(dt_inicio) and exp_dias is not None:
+                try:
+                    dt_final = dt_inicio + pd.to_timedelta(int(exp_dias), unit="D")
+                except Exception:
+                    pass
+
+            if dt_final is pd.NaT or dt_final is None:
+                errors.append(f"Linha {r}: informe 'Data de Fim' ou 'Prazo' (legado) ou 'Data de Início' + 'Exportação (dias)'.")
+                continue
+
+            data_inicio_val = None if (dt_inicio is None or dt_inicio is pd.NaT) else dt_inicio.date()
+            data_fim_val = dt_final.date()
+
+            # ======== NOVO: usar o PDF do hiperlink como "Como fazer?" ========
+            if not (como_fazer and como_fazer.strip()) and usar_pdf_para_como_fazer and documento_referencia and str(documento_referencia).lower().endswith(".pdf"):
+                try:
+                    pdf_texto = _extract_pdf_text_from_url(str(documento_referencia))
+                    # Limpa o texto e reduz tamanho se necessário
+                    como_fazer = (pdf_texto or "").strip()
+                    if len(como_fazer) > 12000:
+                        como_fazer = como_fazer[:12000] + "\n\n[...]"
+                except Exception:
+                    # mantém None se falhar
+                    pass
+
+            payload = TarefaCreate(
+                nome=str(nome_tarefa).strip(),
+                projeto_id=projeto.id,
+                responsavel_id=responsavel.id,
+                como_fazer=como_fazer,
+                prioridade=prioridade,
+                condicao=cond,
+                categoria=categoria,
+                porcentagem=porc,
+                data_inicio=data_inicio_val,
+                data_fim=data_fim_val,
+                documento_referencia=documento_referencia,
+                fase=fase,
+                status=StatusTarefa.NAO_INICIADA if porc == 0 else (StatusTarefa.CONCLUIDA if porc == 100 else StatusTarefa.EM_ANDAMENTO),
+            )
+
+            tarefa = Tarefa(
+                nome=payload.nome,
+                projeto=projeto,
+                responsavel=responsavel,
+                como_fazer=payload.como_fazer,
+                prioridade=payload.prioridade,
+                condicao=payload.condicao or CondicaoTarefa.SEMPRE,
+                categoria=payload.categoria,
+                porcentagem=payload.porcentagem or 0,
+                data_inicio=payload.data_inicio,
+                data_fim=payload.data_fim or payload.prazo,
+                documento_referencia=payload.documento_referencia,
+                fase=payload.fase,
+                status=payload.status or StatusTarefa.NAO_INICIADA,
+            )
+            if tarefa.status == StatusTarefa.CONCLUIDA:
+                from datetime import datetime as _dt
+                tarefa.dataConclusao = _dt.utcnow()
+
+            await tarefa.insert()
+            created += 1
+
+        except Exception as e:
+            errors.append(f"Linha {r}: {e}")
+
+    return {"criadas": created, "erros": errors}
+
+
+async def ingest_from_url(url: str) -> Dict[str, Any]:
+    # Se for planilha: ingere (sem preservar hiperlink por célula)
+    df = _read_tabular_from_url(url)
+    if df is not None:
+        # caminho antigo (sem hiperlink de célula); reusa dataframe
+        return await _ingest_tasks_df_from_dataframe(df)
+
+    # .docx
+    if url.lower().endswith(".docx"):
+        bin_ = _fetch_bytes(url)
+        if not bin_:
+            return {"tipo": "docx", "erro": "Falha ao baixar"}
+        doc = DocxDocument(io.BytesIO(bin_))
+        full_text = "\n".join(par.text for par in doc.paragraphs)
+        return {"tipo": "docx", "bytes": len(bin_), "extract": full_text[:8000]}
+
+    # HTML
+    txt = _fetch_url_text(url)
+    return {"tipo": "html", "extract": txt[:8000]}
+
+
+# Caminho legado (quando já recebemos um DataFrame) — mantido para compat
+async def _ingest_tasks_df_from_dataframe(df: pd.DataFrame) -> Dict[str, Any]:
+    created, errors = 0, []
+    df = df.rename(columns=lambda c: str(c).strip())
+
+    def get(row, *names):
+        for n in names:
+            if n in row and pd.notna(row[n]):
+                return row[n]
+        return None
+
+    for i, row in df.iterrows():
+        try:
+            nome_proj = get(row, "Nome do Projeto", "Projeto")
+            if not nome_proj:
+                errors.append(f"Linha {i+2}: 'Nome do Projeto' é obrigatório.")
+                continue
+            projeto = await Projeto.find_one(Projeto.nome == str(nome_proj).strip())
+            if not projeto:
+                errors.append(f"Linha {i+2}: Projeto '{nome_proj}' não encontrado.")
+                continue
+
+            email_resp = get(row, "Email Responsável", "Responsável", "Email")
+            if not email_resp:
+                errors.append(f"Linha {i+2}: 'Email Responsável' é obrigatório.")
+                continue
+            responsavel = await Funcionario.find_one(Funcionario.email == str(email_resp).strip())
+            if not responsavel:
+                errors.append(f"Linha {i+2}: Responsável '{email_resp}' não encontrado.")
+                continue
+
+            nome_tarefa = get(row, "Nome da Tarefa", "Tarefa", "Nome")
+            if not nome_tarefa:
+                errors.append(f"Linha {i+2}: 'Nome da Tarefa' é obrigatório.")
+                continue
+
+            como_fazer = get(row, "Como fazer?", "Descrição")
+            categoria = get(row, "Categoria", "Classificação")
+            fase = get(row, "Fase")
+            documento_referencia = get(row, "Documento de Referência", "Documento referência", "Documento")
+
+            prioridade_raw = get(row, "Prioridade")
+            prioridade = None
+            if isinstance(prioridade_raw, str):
+                p = prioridade_raw.strip().lower()
+                if p == "media": p = "média"
+                if p in {"baixa", "média", "alta"}:
+                    prioridade = PrioridadeTarefa(p)
+
+            cond_raw = get(row, "Condição", "Condicao")
+            cond = CondicaoTarefa.SEMPRE
+            if isinstance(cond_raw, str):
+                cc = cond_raw.strip().upper()
+                if cc in {"SEMPRE", "A", "B", "C"}:
+                    cond = CondicaoTarefa(cc)
+
+            porc = get(row, "Porcentagem")
+            if porc is None:
+                porc = 100 if _normalize_bool(get(row, "Concluído", "Concluida")) else 0
+            try:
+                porc = int(float(porc))
+            except Exception:
+                porc = 0
+            porc = max(0, min(100, porc))
+
+            dt_ini = get(row, "Data de Início")
+            dt_fim = get(row, "Data de Fim")
+            prazo_legado = get(row, "Prazo")
+            exp_dias = get(row, "Exportação (dias)")
+
+            dt_inicio = pd.to_datetime(dt_ini, errors="coerce") if dt_ini is not None else None
+            dt_final = pd.to_datetime(dt_fim, errors="coerce") if dt_fim is not None else None
+
+            if dt_final is pd.NaT or dt_final is None:
+                prazo_dt = pd.to_datetime(prazo_legado, errors="coerce") if prazo_legado is not None else None
+                if prazo_dt is not None and prazo_dt is not pd.NaT:
+                    dt_final = prazo_dt
+
+            if (dt_final is pd.NaT or dt_final is None) and dt_inicio is not None and pd.notna(dt_inicio) and pd.notna(exp_dias):
+                try:
+                    dt_final = dt_inicio + pd.to_timedelta(int(exp_dias), unit="D")
+                except Exception:
+                    pass
+
+            if dt_final is pd.NaT or dt_final is None:
+                errors.append(f"Linha {i+2}: informe 'Data de Fim' ou 'Prazo' (legado) ou 'Data de Início' + 'Exportação (dias)'.")
+                continue
+
+            data_inicio_val = None if (dt_inicio is None or dt_inicio is pd.NaT) else dt_inicio.date()
+            data_fim_val = dt_final.date()
+
+            payload = TarefaCreate(
+                nome=str(nome_tarefa).strip(),
+                projeto_id=projeto.id,
+                responsavel_id=responsavel.id,
+                como_fazer=como_fazer,
+                prioridade=prioridade,
+                condicao=cond,
+                categoria=categoria,
+                porcentagem=porc,
+                data_inicio=data_inicio_val,
+                data_fim=data_fim_val,
+                documento_referencia=documento_referencia,
+                fase=fase,
+                status=StatusTarefa.NAO_INICIADA if porc == 0 else (StatusTarefa.CONCLUIDA if porc == 100 else StatusTarefa.EM_ANDAMENTO),
+            )
+
+            tarefa = Tarefa(
+                nome=payload.nome,
+                projeto=projeto,
+                responsavel=responsavel,
+                como_fazer=payload.como_fazer,
+                prioridade=payload.prioridade,
+                condicao=payload.condicao or CondicaoTarefa.SEMPRE,
+                categoria=payload.categoria,
+                porcentagem=payload.porcentagem or 0,
+                data_inicio=payload.data_inicio,
+                data_fim=payload.data_fim or payload.prazo,
+                documento_referencia=payload.documento_referencia,
+                fase=payload.fase,
+                status=payload.status or StatusTarefa.NAO_INICIADA,
+            )
+            if tarefa.status == StatusTarefa.CONCLUIDA:
+                from datetime import datetime as _dt
+                tarefa.dataConclusao = _dt.utcnow()
+
+            await tarefa.insert()
+            created += 1
+
+        except Exception as e:
+            errors.append(f"Linha {i+2}: {e}")
+
+    return {"criadas": created, "erros": errors}

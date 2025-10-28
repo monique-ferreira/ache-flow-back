@@ -1,64 +1,97 @@
 # models.py
 from datetime import datetime, date
-from typing import Optional, List, Any, Dict
-from beanie import Document, Link
-from pydantic import BaseModel, EmailStr, Field
+from typing import Optional, List
 from enum import Enum
 
+from beanie import Document, Link
+from beanie.odm.fields import PydanticObjectId
+from pydantic import BaseModel, Field, EmailStr
+
+
+# =========================
+# ENUNS
+# =========================
 class StatusTarefa(str, Enum):
+    NAO_INICIADA = "não iniciada"
     EM_ANDAMENTO = "em andamento"
     CONGELADA = "congelada"
-    NAO_INICIADA = "não iniciada"
     CONCLUIDA = "concluída"
+
 
 class PrioridadeTarefa(str, Enum):
     BAIXA = "baixa"
     MEDIA = "média"
     ALTA = "alta"
 
+
+class CondicaoTarefa(str, Enum):
+    SEMPRE = "sempre"
+    A = "A"
+    B = "B"
+    C = "C"
+
+
+# =========================
+# DOCUMENTOS
+# =========================
 class Funcionario(Document):
     nome: str
-    sobrenome: str
+    sobrenome: Optional[str] = None
     email: EmailStr
-    senha: str
     cargo: Optional[str] = None
-    departamento: Optional[str] = None
-    fotoPerfil: Optional[str] = None
-    dataCadastro: datetime = Field(default_factory=datetime.now)
 
     class Settings:
         name = "funcionarios"
 
+
 class Projeto(Document):
     nome: str
     descricao: Optional[str] = None
-    categoria: Optional[str] = None
-    situacao: str
-    prazo: date
+    # categoria: Optional[str] = None   # REMOVIDO
+    situacao: str = "não iniciado"      # será recalculada pela média de tarefas
+    prazo: Optional[date] = None
     responsavel: Link[Funcionario]
 
     class Settings:
         name = "projetos"
 
+
 class Tarefa(Document):
+    # básicos
     nome: str
-    descricao: Optional[str] = None
-    prioridade: PrioridadeTarefa = PrioridadeTarefa.MEDIA
-    status: StatusTarefa = StatusTarefa.NAO_INICIADA
-    dataCriacao: datetime = Field(default_factory=datetime.now)
-    dataConclusao: Optional[date] = None
-    prazo: date
     projeto: Link[Projeto]
     responsavel: Link[Funcionario]
-    numero: Optional[str] = None
-    classificacao: Optional[str] = None
-    fase: Optional[str] = None
-    condicao: Optional[str] = None
+
+    # novos/renomeados
+    como_fazer: Optional[str] = None             # antes: descricao
+    prioridade: Optional[PrioridadeTarefa] = None  # opcional (só se vier do arquivo)
+    condicao: CondicaoTarefa = CondicaoTarefa.SEMPRE
+    categoria: Optional[str] = None              # antes: classificacao
+    porcentagem: int = 0                         # antes: concluido (bool)
+
+    # datas
+    data_inicio: Optional[date] = None           # novo, editável
+    data_fim: date                                # novo, editável (substitui “prazo”)
+
+    # audit/status
+    status: StatusTarefa = StatusTarefa.NAO_INICIADA
+    dataCriacao: datetime = Field(default_factory=datetime.utcnow)
+    dataConclusao: Optional[datetime] = None
     documento_referencia: Optional[str] = None
-    concluido: Optional[bool] = False
+    fase: Optional[str] = None
+
+    # ---- Compat: manter "prazo" como alias de data_fim ----
+    @property
+    def prazo(self) -> date:
+        return self.data_fim
+
+    @prazo.setter
+    def prazo(self, v: date):
+        self.data_fim = v
 
     class Settings:
         name = "tarefas"
+
 
 class Calendario(Document):
     tipoEvento: str
@@ -69,92 +102,58 @@ class Calendario(Document):
     class Settings:
         name = "calendario"
 
-# --- Models para Update ---
-class FuncionarioUpdate(BaseModel):
+
+# =========================
+# SCHEMAS (API)
+# =========================
+class TarefaBase(BaseModel):
+    nome: str
+    projeto_id: PydanticObjectId
+    responsavel_id: PydanticObjectId
+    como_fazer: Optional[str] = None
+    prioridade: Optional[PrioridadeTarefa] = None
+    condicao: Optional[CondicaoTarefa] = CondicaoTarefa.SEMPRE
+    categoria: Optional[str] = None
+    porcentagem: Optional[int] = 0
+    data_inicio: Optional[date] = None
+    data_fim: Optional[date] = None  # preferencial
+    # compat
+    prazo: Optional[date] = None     # alias de data_fim
+    status: Optional[StatusTarefa] = StatusTarefa.NAO_INICIADA
+    documento_referencia: Optional[str] = None
+    fase: Optional[str] = None
+
+
+class TarefaCreate(TarefaBase):
+    pass
+
+
+class TarefaUpdate(BaseModel):
     nome: Optional[str] = None
-    sobrenome: Optional[str] = None
-    email: Optional[EmailStr] = None
-    cargo: Optional[str] = None
-    departamento: Optional[str] = None
-    fotoPerfil: Optional[str] = None
+    como_fazer: Optional[str] = None
+    prioridade: Optional[PrioridadeTarefa] = None
+    condicao: Optional[CondicaoTarefa] = None
+    categoria: Optional[str] = None
+    porcentagem: Optional[int] = None
+    data_inicio: Optional[date] = None
+    data_fim: Optional[date] = None
+    prazo: Optional[date] = None
+    status: Optional[StatusTarefa] = None
+    documento_referencia: Optional[str] = None
+    fase: Optional[str] = None
+    projeto_id: Optional[PydanticObjectId] = None
+    responsavel_id: Optional[PydanticObjectId] = None
+
+
+class ProjetoCreate(BaseModel):
+    nome: str
+    descricao: Optional[str] = None
+    prazo: Optional[date] = None
+    responsavel_id: PydanticObjectId
+
 
 class ProjetoUpdate(BaseModel):
     nome: Optional[str] = None
     descricao: Optional[str] = None
-    categoria: Optional[str] = None
-    situacao: Optional[str] = None
     prazo: Optional[date] = None
-    responsavel_id: Optional[str] = None
-
-class TarefaUpdate(BaseModel):
-    nome: Optional[str] = None
-    descricao: Optional[str] = None
-    prioridade: Optional[PrioridadeTarefa] = None
-    status: Optional[StatusTarefa] = None
-    prazo: Optional[date] = None
-    responsavel_id: Optional[str] = None
-
-class CalendarioUpdate(BaseModel):
-    tipoEvento: Optional[str] = None
-    data_hora_evento: Optional[datetime] = None
-    projeto_id: Optional[str] = None
-    tarefa_id: Optional[str] = None
-
-# --- Models para Create ---
-class FuncionarioCreate(BaseModel):
-    nome: str
-    sobrenome: str
-    email: EmailStr
-    senha: str
-    cargo: Optional[str] = None
-    departamento: Optional[str] = None
-    fotoPerfil: Optional[str] = None
-
-class ProjetoCreate(BaseModel):
-    nome: str
-    responsavel_id: str
-    descricao: Optional[str] = None
-    categoria: Optional[str] = None
-    situacao: str
-    prazo: date
-
-class TarefaCreate(BaseModel):
-    nome: str
-    projeto_id: str
-    responsavel_id: str
-    descricao: Optional[str] = None
-    prioridade: PrioridadeTarefa = PrioridadeTarefa.MEDIA
-    status: StatusTarefa = StatusTarefa.NAO_INICIADA
-    prazo: date
-    numero: Optional[str] = None
-    classificacao: Optional[str] = None
-    fase: Optional[str] = None
-    condicao: Optional[str] = None
-    documento_referencia: Optional[str] = None
-    concluido: Optional[bool] = False
-
-class CalendarioCreate(BaseModel):
-    tipoEvento: str
-    data_hora_evento: datetime
-    projeto_id: Optional[str] = None
-    tarefa_id: Optional[str] = None
-
-# --- Models para Autenticação e Chat ---
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-
-class TokenData(BaseModel):
-    email: Optional[str] = None
-
-class ChatRequest(BaseModel):
-    pergunta: str
-
-# --- MODELO DE RESPOSTA PADRONIZADO PARA A IA ---
-class AIResponse(BaseModel):
-    """
-    Define uma estrutura de resposta padronizada para qualquer interação com a IA.
-    """
-    tipo_resposta: str
-    conteudo_texto: str
-    dados: Optional[Dict[str, Any]] = None
+    responsavel_id: Optional[PydanticObjectId] = None
