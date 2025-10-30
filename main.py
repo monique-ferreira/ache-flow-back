@@ -519,18 +519,13 @@ async def excluir_calendario(
     return {"ok": True}
 
 # ========== AUTH ==========
-@app.post("/token")
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    """
-    Fluxo OAuth2 Password: recebe username (email) e password e devolve access_token (JWT).
-    """
-    user = await auth.authenticate_user(form_data.username, form_data.password)
-    if not user:
-        raise HTTPException(status_code=400, detail="Usuário ou senha incorretos")
-
-    access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = auth.create_access_token(data={"sub": user.email}, expires_delta=access_token_expires)
-    return {"access_token": access_token, "token_type": "bearer"}
+@app.post("/token", response_model=Token, tags=["Autenticação"])
+async def login_para_obter_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    funcionario = await Funcionario.find_one(Funcionario.email == form_data.username)
+    if not funcionario or not auth.verificar_senha(form_data.password, funcionario.senha):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email ou senha incorretos")
+    token_acesso = auth.criar_token_acesso(data={"sub": funcionario.email})
+    return {"access_token": token_acesso, "token_type": "bearer"}
 
 @app.get("/funcionarios/me")
 async def auth_me(current_user: Funcionario = Depends(auth.get_usuario_logado)):
