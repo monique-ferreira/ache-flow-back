@@ -39,6 +39,7 @@ class Funcionario(Document):
     sobrenome: Optional[str] = None
     email: EmailStr
     cargo: Optional[str] = None
+    senha_hash: Optional[str] = None
 
     class Settings:
         name = "funcionarios"

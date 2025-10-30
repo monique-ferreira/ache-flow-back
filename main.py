@@ -1,6 +1,6 @@
 from typing import List, Optional, Dict, Any
 from contextlib import asynccontextmanager
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,6 +19,8 @@ from ingest import ingest_xlsx, ingest_from_url
 import io
 import pandas as pd
 
+from fastapi.security import OAuth2PasswordRequestForm
+import auth
 
 # ---------------------------
 # Lifespan / App
@@ -515,3 +517,52 @@ async def excluir_calendario(
     if not c: raise HTTPException(404, "Evento não encontrado.")
     await c.delete()
     return {"ok": True}
+
+# ========== AUTH ==========
+@app.post("/token")
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    """
+    Fluxo OAuth2 Password: recebe username (email) e password e devolve access_token (JWT).
+    """
+    user = await auth.authenticate_user(form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(status_code=400, detail="Usuário ou senha incorretos")
+
+    access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = auth.create_access_token(data={"sub": user.email}, expires_delta=access_token_expires)
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.get("/auth/me")
+async def auth_me(current_user: Funcionario = Depends(auth.get_usuario_logado)):
+    """
+    Retorna os dados do usuário autenticado (útil p/ o frontend).
+    """
+    return {
+        "id": str(current_user.id),
+        "nome": current_user.nome,
+        "email": current_user.email,
+        "cargo": getattr(current_user, "cargo", None),
+    }
+
+@app.post("/auth/register")
+async def auth_register(payload: dict):
+    """
+    Cria usuário com senha (somente para dev/homolog).
+    payload = { "nome": "...", "email": "...", "senha": "..." }
+    """
+    nome = payload.get("nome")
+    email = payload.get("email")
+    senha = payload.get("senha")
+    if not (nome and email and senha):
+        raise HTTPException(400, "nome, email e senha são obrigatórios")
+
+    ja = await Funcionario.find_one(Funcionario.email == email)
+    if ja:
+        raise HTTPException(400, "email já cadastrado")
+
+    u = Funcionario(nome=nome, email=email)
+    # salva hash de senha no documento
+    setattr(u, "senha_hash", auth.get_password_hash(senha))
+    await u.insert()
+    return {"id": str(u.id), "email": u.email}
+
