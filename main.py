@@ -532,7 +532,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     access_token = auth.create_access_token(data={"sub": user.email}, expires_delta=access_token_expires)
     return {"access_token": access_token, "token_type": "bearer"}
 
-@app.get("/auth/me")
+@app.get("/funcionarios/me")
 async def auth_me(current_user: Funcionario = Depends(auth.get_usuario_logado)):
     """
     Retorna os dados do usuário autenticado (útil p/ o frontend).
