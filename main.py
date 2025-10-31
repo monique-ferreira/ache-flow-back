@@ -42,7 +42,7 @@ app = FastAPI(
 # Configuração do CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://ache-flow.vercel.app", "http://localhost:3000", "https://localhost:5173"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
