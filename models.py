@@ -158,3 +158,10 @@ class ProjetoUpdate(BaseModel):
     descricao: Optional[str] = None
     prazo: Optional[date] = None
     responsavel_id: Optional[PydanticObjectId] = None
+
+# =========================
+# TOKEN
+# =========================
+class Token(BaseModel):
+    access_token: str
+    token_type: str

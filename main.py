@@ -12,7 +12,7 @@ from database import db
 from models import (
     Funcionario, Projeto, Tarefa, Calendario,
     TarefaCreate, TarefaUpdate, ProjetoCreate, ProjetoUpdate,
-    StatusTarefa
+    StatusTarefa, Token
 )
 from command_router import handle_command
 from ingest import ingest_xlsx, ingest_from_url
@@ -523,6 +523,10 @@ async def excluir_calendario(
 async def login_para_obter_token(form_data: OAuth2PasswordRequestForm = Depends()):
     funcionario = await Funcionario.find_one(Funcionario.email == form_data.username)
     if not funcionario or not auth.verificar_senha(form_data.password, funcionario.senha):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email ou senha incorretos")
+    senha_hash = getattr(funcionario, "senha_hash", "") or ""
+    # se o seu auth antigo usa verify_password / get_password_hash, use-os aqui:
+    if not auth.verify_password(form_data.password, senha_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email ou senha incorretos")
     token_acesso = auth.criar_token_acesso(data={"sub": funcionario.email})
     return {"access_token": token_acesso, "token_type": "bearer"}
