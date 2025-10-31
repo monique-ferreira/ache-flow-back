@@ -143,9 +143,22 @@ async def criar_funcionario(funcionario_data: FuncionarioCreate):
 async def ler_usuario_logado(current_user: Funcionario = Depends(auth.get_usuario_logado)):
     return current_user
 
-@app.get("/funcionarios", response_model=List[Funcionario], tags=["Funcionários"], summary="Listar todos os funcionários")
+@app.get("/funcionarios", tags=["Funcionários"], summary="Listar todos os funcionários")
 async def listar_funcionarios(current_user: Funcionario = Depends(auth.get_usuario_logado)):
-    return await Funcionario.find_all().to_list()
+    funcionarios = await Funcionario.find_all().to_list()
+
+    safe = []
+    for f in funcionarios:
+        try:
+            d = f.model_dump()
+        except Exception:
+            # fallback: conversão manual se o doc tiver senha_hash
+            d = f.__dict__.copy()
+        d["senha"] = d.get("senha") or d.get("senha_hash", "")
+        d.pop("senha_hash", None)
+        d.pop("senha", None)  # nunca devolver senha pra frontend
+        safe.append(d)
+    return safe
 
 @app.get("/funcionarios/{id}", response_model=Funcionario, tags=["Funcionários"], summary="Obter um funcionário por ID")
 async def obter_funcionario(id: PydanticObjectId, current_user: Funcionario = Depends(auth.get_usuario_logado)):
