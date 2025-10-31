@@ -2,7 +2,7 @@ from typing import List, Optional, Dict, Any
 from contextlib import asynccontextmanager
 from datetime import datetime, date, timedelta
 
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Query
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from beanie import PydanticObjectId
@@ -528,9 +528,9 @@ async def excluir_calendario(
 @app.post("/token", response_model=Token, tags=["Autenticação"])
 async def login_para_obter_token(form_data: OAuth2PasswordRequestForm = Depends()):
     funcionario = await Funcionario.find_one(Funcionario.email == form_data.username)
-    if not funcionario or not security.verificar_senha(form_data.password, funcionario.senha):
+    if not funcionario or not security.verify_password(form_data.password, getattr(funcionario, "senha_hash", "")):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email ou senha incorretos")
-    token_acesso = security.criar_token_acesso(data={"sub": funcionario.email})
+    token_acesso = security.create_access_token(data={"sub": funcionario.email})
     return {"access_token": token_acesso, "token_type": "bearer"}
 
 @app.get("/funcionarios/me")
