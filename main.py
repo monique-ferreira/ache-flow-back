@@ -103,10 +103,16 @@ async def obter_resposta_ia(pergunta: str, current_user: Funcionario) -> AIRespo
 @app.post("/token", response_model=Token, tags=["Autenticação"])
 async def login_para_obter_token(form_data: OAuth2PasswordRequestForm = Depends()):
     funcionario = await Funcionario.find_one(Funcionario.email == form_data.username)
-    if not funcionario or not auth.verificar_senha(form_data.password, funcionario.senha):
+    if not funcionario:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email ou senha incorretos")
+    try:
+        senha_valida = auth.verificar_senha(form_data.password, funcionario.senha)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email ou senha incorretos")
+    if not senha_valida:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email ou senha incorretos")
     token_acesso = auth.criar_token_acesso(data={"sub": funcionario.email})
-    return {"access_token": token_acesso, "token_type": "bearer"}
+    return {"access_token": token_acesso, "token_type": "bearer", "id": str(funcionario.id)}
 
 # --- ENDPOINT DE IA GENERATIVA ---
 @app.post("/ai/chat", response_model=AIResponse, tags=["IA Generativa"], summary="Processa uma pergunta do usuário usando IA Generativa")
