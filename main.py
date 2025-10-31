@@ -39,13 +39,19 @@ app = FastAPI(
     version="8.0.0" # IA com contexto global de funcionários
 )
 
-# Configuração do CORS
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",          # dev local
+    "https://ache-flow.vercel.app",
+    "https://localhost:5174"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,                # por ORIGEM, vale pra todas as rotas
+    allow_origin_regex=r"^https://.*\.a\.run\.app$",  # opcional: cobre subdomínios do Cloud Run
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],                          # GET/POST/PUT/DELETE/OPTIONS...
+    allow_headers=["*"],                          # incl. Authorization
 )
 
 # --- LÓGICA CENTRAL DA IA ---
@@ -111,7 +117,7 @@ async def login_para_obter_token(form_data: OAuth2PasswordRequestForm = Depends(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email ou senha incorretos")
     if not senha_valida:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email ou senha incorretos")
-    token_acesso = auth.criar_token_acesso(data={"sub": funcionario.email})
+    token_acesso = auth.criar_token_acesso(data={"sub": funcionario.email, "id": str(funcionario.id)})
     return {"access_token": token_acesso, "token_type": "bearer", "id": str(funcionario.id)}
 
 # --- ENDPOINT DE IA GENERATIVA ---
