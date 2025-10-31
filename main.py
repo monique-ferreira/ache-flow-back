@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from beanie import PydanticObjectId
 
-import auth
+import security
 from database import db
 from models import (
     Funcionario, Projeto, Tarefa, Calendario,
@@ -20,7 +20,7 @@ import io
 import pandas as pd
 
 from fastapi.security import OAuth2PasswordRequestForm
-import auth
+import security
 
 # ---------------------------
 # Lifespan / App
@@ -88,7 +88,7 @@ async def health():
 # ---------------------------
 # Dependência de Auth
 # ---------------------------
-get_user = auth.get_usuario_logado  # usa seu fluxo real (Bearer)
+get_user = security.get_usuario_logado  # usa seu fluxo real (Bearer)
 
 
 # ---------------------------
@@ -528,13 +528,13 @@ async def excluir_calendario(
 @app.post("/token", response_model=Token, tags=["Autenticação"])
 async def login_para_obter_token(form_data: OAuth2PasswordRequestForm = Depends()):
     funcionario = await Funcionario.find_one(Funcionario.email == form_data.username)
-    if not funcionario or not auth.verificar_senha(form_data.password, funcionario.senha):
+    if not funcionario or not security.verificar_senha(form_data.password, funcionario.senha):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email ou senha incorretos")
-    token_acesso = auth.criar_token_acesso(data={"sub": funcionario.email})
+    token_acesso = security.criar_token_acesso(data={"sub": funcionario.email})
     return {"access_token": token_acesso, "token_type": "bearer"}
 
 @app.get("/funcionarios/me")
-async def auth_me(current_user: Funcionario = Depends(auth.get_usuario_logado)):
+async def auth_me(current_user: Funcionario = Depends(security.get_usuario_logado)):
     """
     Retorna os dados do usuário autenticado (útil p/ o frontend).
     """
@@ -563,7 +563,7 @@ async def auth_register(payload: dict):
 
     u = Funcionario(nome=nome, email=email)
     # salva hash de senha no documento
-    setattr(u, "senha_hash", auth.get_password_hash(senha))
+    setattr(u, "senha_hash", security.get_password_hash(senha))
     await u.insert()
     return {"id": str(u.id), "email": u.email}
 
