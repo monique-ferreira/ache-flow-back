@@ -12,8 +12,6 @@ from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import io
 
-from fastapi import HTTPException
-
 # Importa a lógica de autenticação, IA e os modelos
 import auth
 from ia_generativa import inicializar_ia, gerar_resposta_ia
@@ -147,21 +145,8 @@ async def ler_usuario_logado(current_user: Funcionario = Depends(auth.get_usuari
 
 @app.get("/funcionarios", response_model=List[Funcionario], tags=["Funcionários"], summary="Listar todos os funcionários")
 async def listar_funcionarios(current_user: Funcionario = Depends(auth.get_usuario_logado)):
-    try:
-        funcionarios = await Funcionario.find_all().project({
-            "_id": 1,
-            "nome": 1,
-            "sobrenome": 1,
-            "email": 1,
-            "cargo": 1,
-            "departamento": 1,
-            "fotoPerfil": 1
-        }).to_list()
-        return funcionarios
-    except Exception as e:
-        print("🚨 ERRO /funcionarios:", repr(e))
-        raise HTTPException(status_code=500, detail=f"Erro interno ao listar funcionários: {e}")
-    
+    return await Funcionario.find_all().to_list()
+
 @app.get("/funcionarios/{id}", response_model=Funcionario, tags=["Funcionários"], summary="Obter um funcionário por ID")
 async def obter_funcionario(id: PydanticObjectId, current_user: Funcionario = Depends(auth.get_usuario_logado)):
     funcionario = await Funcionario.get(id)
