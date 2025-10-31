@@ -39,7 +39,12 @@ class Funcionario(Document):
     sobrenome: Optional[str] = None
     email: EmailStr
     cargo: Optional[str] = None
-    senha_hash: Optional[str] = None
+    departamento: Optional[str] = None
+    fotoPerfil: Optional[str] = None
+    dataCadastro: datetime = Field(default_factory=datetime.now)
+
+    senha_hash: str
+    senha: Optional[str] = None
 
     class Settings:
         name = "funcionarios"

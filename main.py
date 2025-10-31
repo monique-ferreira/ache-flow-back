@@ -171,17 +171,51 @@ async def listar_funcionarios(
         res = await Funcionario.find_all().skip(skip).limit(limit).to_list()
     return [_doc(x) for x in res]
 
-@app.post("/funcionarios")
+from typing import Dict, Any
+from fastapi import HTTPException, status, Depends
+
+@app.post("/funcionarios", tags=["Funcionários"])
 async def criar_funcionario(
     data: Dict[str, Any],
-    current_user: Funcionario = Depends(get_user)
+    current_user: Funcionario = Depends(get_user)  # mantenha seu guard se quiser
 ):
-    if not data.get("email"): raise HTTPException(400, "email é obrigatório")
-    if await Funcionario.find_one(Funcionario.email == data["email"]):
-        raise HTTPException(400, "email já cadastrado")
-    f = Funcionario(**data)
+    email_raw = data.get("email")
+    if not email_raw:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "email é obrigatório")
+    email = email_raw.strip().lower()
+
+    if await Funcionario.find_one(Funcionario.email == email):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "email já cadastrado")
+
+    senha_plain = data.pop("senha", None)             # remove do payload
+    senha_hash_in = data.pop("senha_hash", None)      # remove do payload (se vier)
+
+    if senha_plain:
+        senha_hash_final = security.get_password_hash(senha_plain)
+    elif senha_hash_in:
+        # se veio um hash pronto (ex.: migração/import), usa ele
+        senha_hash_final = senha_hash_in
+    else:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "senha é obrigatória")
+
+    permitido = {
+        "nome": data.get("nome"),
+        "sobrenome": data.get("sobrenome"),
+        "email": email,
+        "cargo": data.get("cargo"),
+        "departamento": data.get("departamento"),
+        "fotoPerfil": data.get("fotoPerfil"),
+        "senha_hash": senha_hash_final,
+        # campo legado só se quiser manter compat explícita:
+        "senha": None,
+    }
+
+    f = Funcionario(**permitido)
     await f.insert()
-    return {"id": str(f.id)}
+
+    # 5) resposta sem hash
+    return {"id": str(f.id), "email": f.email, "nome": f.nome, "sobrenome": f.sobrenome}
+
 
 @app.get("/funcionarios/{func_id}")
 async def obter_funcionario(
@@ -527,9 +561,20 @@ async def excluir_calendario(
 # --- AUTENTICAÇÃO ---
 @app.post("/token", response_model=Token, tags=["Autenticação"])
 async def login_para_obter_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    funcionario = await Funcionario.find_one(Funcionario.email == form_data.username)
-    if not funcionario or not security.verify_password(form_data.password, getattr(funcionario, "senha_hash", "")):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email ou senha incorretos")
+    email = form_data.username.strip().lower()
+    funcionario = await Funcionario.find_one(Funcionario.email == email)
+    if not funcionario:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email incorreto")
+    
+    hash_armazenado = funcionario.senha_hash or funcionario.senha
+    if not hash_armazenado or not security.verify_password(form_data.password, hash_armazenado):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Senha incorreta")
+    
+    if not funcionario.senha_hash and funcionario.senha:
+        funcionario.senha_hash = funcionario.senha
+        funcionario.senha = None
+        await funcionario.save()
+
     token_acesso = security.create_access_token(data={"sub": funcionario.email})
     return {"access_token": token_acesso, "token_type": "bearer"}
 
