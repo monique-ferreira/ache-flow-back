@@ -12,9 +12,9 @@ from models import Funcionario
 load_dotenv()
 
 # --- Configurações de Segurança ---
-SECRET_KEY = os.getenv("SECRET_KEY", "uma-chave-secreta-muito-dificil-de-adivinhar-012345")
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 # --- Hashing de Senha ---
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
