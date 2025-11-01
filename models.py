@@ -18,7 +18,7 @@ class PrioridadeTarefa(str, Enum):
 
 class Funcionario(Document):
     nome: str
-    sobrenome: str
+    sobrenome: Optional[str] = None
     email: EmailStr
     senha: str
     cargo: Optional[str] = None
@@ -103,7 +103,7 @@ class CalendarioUpdate(BaseModel):
 # --- Models para Create ---
 class FuncionarioCreate(BaseModel):
     nome: str
-    sobrenome: str
+    sobrenome: Optional[str] = None
     email: EmailStr
     senha: str
     cargo: Optional[str] = None
