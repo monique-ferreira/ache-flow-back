@@ -145,18 +145,16 @@ async def ler_usuario_logado(current_user: Funcionario = Depends(auth.get_usuari
 
 @app.get("/funcionarios", tags=["Funcionários"], summary="Listar todos os funcionários")
 async def listar_funcionarios(current_user: Funcionario = Depends(auth.get_usuario_logado)):
-    funcionarios = await Funcionario.find_all().to_list()
+    coll = db.client.get_default_database().get_collection("funcionarios")
+    docs = await coll.find(
+        {},
+        {"nome": 1, "sobrenome": 1, "email": 1, "cargo": 1, "departamento": 1, "fotoPerfil": 1, "dataCadastro": 1}
+    ).to_list(length=None)
 
     safe = []
-    for f in funcionarios:
-        try:
-            d = f.model_dump()
-        except Exception:
-            # fallback: conversão manual se o doc tiver senha_hash
-            d = f.__dict__.copy()
-        d["senha"] = d.get("senha") or d.get("senha_hash", "")
-        d.pop("senha_hash", None)
-        d.pop("senha", None)  # nunca devolver senha pra frontend
+    for d in docs:
+        d["_id"] = str(d["_id"])
+        d["sobrenome"] = d.get("sobrenome") or ""   # normaliza None -> ""
         safe.append(d)
     return safe
 
