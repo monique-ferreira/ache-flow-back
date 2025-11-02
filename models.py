@@ -1,6 +1,6 @@
 # models.py
 from datetime import datetime, date
-from typing import Optional, List, Any, Dict
+from typing import Optional, List
 from beanie import Document, Link
 from pydantic import BaseModel, EmailStr, Field
 from enum import Enum
@@ -50,12 +50,6 @@ class Tarefa(Document):
     prazo: date
     projeto: Link[Projeto]
     responsavel: Link[Funcionario]
-    numero: Optional[str] = None
-    classificacao: Optional[str] = None
-    fase: Optional[str] = None
-    condicao: Optional[str] = None
-    documento_referencia: Optional[str] = None
-    concluido: Optional[bool] = False
 
     class Settings:
         name = "tarefas"
@@ -133,13 +127,14 @@ class TarefaCreate(BaseModel):
     documento_referencia: Optional[str] = None
     concluido: Optional[bool] = False
 
+
 class CalendarioCreate(BaseModel):
     tipoEvento: str
     data_hora_evento: datetime
     projeto_id: Optional[str] = None
     tarefa_id: Optional[str] = None
 
-# --- Models para Autenticação e Chat ---
+# --- Models para Autenticação ---
 class Token(BaseModel):
     access_token: str
     token_type: str

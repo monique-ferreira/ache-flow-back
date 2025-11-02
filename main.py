@@ -12,14 +12,15 @@ from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import io
 
-# Importa a lógica de autenticação, IA e os modelos
+# Importa a lógica de autenticação e os modelos
 import auth
 from database import db
 from models import (
     Funcionario, Projeto, Tarefa, Calendario, Token,
     FuncionarioCreate, ProjetoCreate, TarefaCreate, CalendarioCreate,
     FuncionarioUpdate, ProjetoUpdate, TarefaUpdate, CalendarioUpdate,
-    StatusTarefa, PrioridadeTarefa, TokenData,
+    StatusTarefa,
+    PrioridadeTarefa
 )
 
 @asynccontextmanager
@@ -31,19 +32,21 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     lifespan=lifespan,
     title="API de Gerenciamento de Projetos e Tarefas",
-    description="API com CRUD completo, autenticação e IA Generativa.",
-    version="9.0.0" # IA com contexto global de funcionários
+    description="API com CRUD completo para todos os recursos e autenticação.",
+    version="5.0.0"
 )
 
-ALLOWED_ORIGINS = [
-    "http://localhost:5173",          # dev local
+origins = [
+    "http://localhost",
+    "http://localhost:8000",
+    "http://localhost:3000",
+    "https://ache-flow.vercel.app/",
     "https://ache-flow.vercel.app",
-    "https://localhost:5174"
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,                # por ORIGEM, vale pra todas as rotas
+    allow_origins=[origins],                # por ORIGEM, vale pra todas as rotas
     allow_origin_regex=r"^https://.*\.a\.run\.app$",  # opcional: cobre subdomínios do Cloud Run
     allow_credentials=True,
     allow_methods=["*"],                          # GET/POST/PUT/DELETE/OPTIONS...
@@ -54,16 +57,15 @@ app.add_middleware(
 @app.post("/token", response_model=Token, tags=["Autenticação"])
 async def login_para_obter_token(form_data: OAuth2PasswordRequestForm = Depends()):
     funcionario = await Funcionario.find_one(Funcionario.email == form_data.username)
-    if not funcionario:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email ou senha incorretos")
-    try:
-        senha_valida = auth.verificar_senha(form_data.password, funcionario.senha)
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email ou senha incorretos")
-    if not senha_valida:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email ou senha incorretos")
-    token_acesso = auth.criar_token_acesso(data={"sub": funcionario.email, "id": str(funcionario.id)})
-    return {"access_token": token_acesso, "token_type": "bearer", "id": str(funcionario.id)}
+    if not funcionario or not auth.verificar_senha(form_data.password, funcionario.senha):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Email ou senha incorretos",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    token_acesso = auth.criar_token_acesso(data={"sub": funcionario.email})
+    return {"access_token": token_acesso, "token_type": "bearer"}
+
 
 # --- CRUD Completo: Funcionários ---
 @app.post("/funcionarios", response_model=Funcionario, tags=["Funcionários"], summary="Criar um novo funcionário (Registro)")
@@ -174,8 +176,7 @@ async def criar_tarefa(tarefa_data: TarefaCreate, current_user: Funcionario = De
     if not projeto: raise HTTPException(status_code=404, detail="Projeto não encontrado.")
     responsavel = await Funcionario.get(PydanticObjectId(tarefa_data.responsavel_id))
     if not responsavel: raise HTTPException(status_code=404, detail="Funcionário responsável não encontrado.")
-    tarefa_dict = tarefa_data.dict(exclude={"projeto_id", "responsavel_id"})
-    tarefa = Tarefa(**tarefa_dict, projeto=projeto, responsavel=responsavel)
+    tarefa = Tarefa(**tarefa_data.dict(exclude={"projeto_id", "responsavel_id"}), projeto=projeto, responsavel=responsavel)
     await tarefa.insert()
     return tarefa
 
@@ -243,6 +244,7 @@ async def criar_evento_calendario(calendario_data: CalendarioCreate, current_use
     if calendario_data.tarefa_id:
         tarefa_link = await Tarefa.get(PydanticObjectId(calendario_data.tarefa_id))
         if not tarefa_link: raise HTTPException(status_code=404, detail="Tarefa para agendamento não encontrada.")
+
     evento = Calendario(**calendario_data.dict(exclude={"projeto_id", "tarefa_id"}), projeto=projeto_link, tarefa=tarefa_link)
     await evento.insert()
     return evento
@@ -263,14 +265,17 @@ async def atualizar_evento_calendario(id: PydanticObjectId, update_data: Calenda
     evento = await Calendario.get(id)
     if not evento:
         raise HTTPException(status_code=404, detail="Evento do calendário não encontrado.")
+    
     update_dict = update_data.dict(exclude_unset=True)
     if "projeto_id" in update_dict:
         evento.projeto = await Projeto.get(PydanticObjectId(update_dict["projeto_id"])) if update_dict["projeto_id"] else None
     if "tarefa_id" in update_dict:
         evento.tarefa = await Tarefa.get(PydanticObjectId(update_dict["tarefa_id"])) if update_dict["tarefa_id"] else None
+
     for key, value in update_dict.items():
         if key not in ["projeto_id", "tarefa_id"]:
             setattr(evento, key, value)
+            
     await evento.save()
     return await Calendario.get(id, fetch_links=True)
 
@@ -283,44 +288,128 @@ async def deletar_evento_calendario(id: PydanticObjectId, current_user: Funciona
     return None
 
 # --- EXPORTAÇÃO E IMPORTAÇÃO DE TAREFAS (EXCEL) ---
+
 @app.get("/tarefas/exportar", tags=["Tarefas"], summary="Exportar todas as tarefas para um arquivo Excel")
 async def exportar_tarefas_excel(current_user: Funcionario = Depends(auth.get_usuario_logado)):
+    """
+    Gera um arquivo .xlsx com todas as tarefas cadastradas no banco de dados.
+    """
     tarefas = await Tarefa.find_all(fetch_links=True).to_list()
     if not tarefas:
         raise HTTPException(status_code=404, detail="Nenhuma tarefa encontrada para exportar.")
-    tarefas_data = [{"ID da Tarefa": str(t.id), "Nome da Tarefa": t.nome, "Descrição": t.descricao, "Prioridade": t.prioridade.value, "Status": t.status.value, "Prazo": t.prazo.isoformat(), "Projeto": t.projeto.nome if t.projeto else None, "Responsável": f"{t.responsavel.nome} {t.responsavel.sobrenome}" if t.responsavel else None, "Email Responsável": t.responsavel.email if t.responsavel else None, "Número": t.numero, "Classificação": t.classificacao, "Fase": t.fase, "Condição": t.condicao, "Documento de Referência": t.documento_referencia, "Concluído": t.concluido} for t in tarefas]
+
+    # Prepara os dados para o DataFrame
+    tarefas_data = []
+    for tarefa in tarefas:
+        tarefas_data.append({
+            "ID da Tarefa": str(tarefa.id),
+            "Nome da Tarefa": tarefa.nome,
+            "Descrição": tarefa.descricao,
+            "Prioridade": tarefa.prioridade.value,
+            "Status": tarefa.status.value,
+            "Prazo": tarefa.prazo.isoformat(),
+            "Projeto": tarefa.projeto.nome if tarefa.projeto else None,
+            "Responsável": f"{tarefa.responsavel.nome} {tarefa.responsavel.sobrenome}" if tarefa.responsavel else None,
+            "Email Responsável": tarefa.responsavel.email if tarefa.responsavel else None,
+            # Novos campos
+            "Número": tarefa.numero,
+            "Classificação": tarefa.classificacao,
+            "Fase": tarefa.fase,
+            "Condição": tarefa.condicao,
+            "Documento de Referência": tarefa.documento_referencia,
+            "Concluído": tarefa.concluido
+        })
+
     df = pd.DataFrame(tarefas_data)
+
+    # Cria o arquivo Excel em memória
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Tarefas')
     output.seek(0)
-    headers = {'Content-Disposition': 'attachment; filename="tarefas.xlsx"'}
+
+    headers = {
+        'Content-Disposition': 'attachment; filename="tarefas.xlsx"'
+    }
+
     return StreamingResponse(output, headers=headers, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
 
 @app.post("/tarefas/importar", tags=["Tarefas"], summary="Importar tarefas de um arquivo Excel")
 async def importar_tarefas_excel(file: UploadFile = File(...), current_user: Funcionario = Depends(auth.get_usuario_logado)):
+    """
+    Cria novas tarefas a partir de um arquivo .xlsx.
+    O arquivo Excel deve conter as colunas: 'Nome da Tarefa', 'Prazo', 'Nome do Projeto', 'Email Responsável'.
+    Outras colunas como 'Descrição', 'Prioridade', e os novos campos são opcionais.
+    """
     if not file.filename.endswith('.xlsx'):
         raise HTTPException(status_code=400, detail="Formato de arquivo inválido. Por favor, envie um arquivo .xlsx.")
+
     try:
         contents = await file.read()
         df = pd.read_excel(io.BytesIO(contents))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Erro ao ler o arquivo Excel: {e}")
-    tarefas_criadas, erros = 0, []
+
+    tarefas_criadas = 0
+    erros = []
+
     for index, row in df.iterrows():
         try:
-            if not all(k in row and pd.notna(row[k]) for k in ['Nome da Tarefa', 'Prazo', 'Nome do Projeto', 'Email Responsável']):
-                erros.append(f"Linha {index + 2}: Faltam colunas obrigatórias ou elas estão vazias.")
+            # Validações mínimas
+            if not all(k in row for k in ['Nome da Tarefa', 'Prazo', 'Nome do Projeto', 'Email Responsável']):
+                erros.append(f"Linha {index + 2}: Faltam colunas obrigatórias.")
                 continue
-            projeto, responsavel = await Projeto.find_one(Projeto.nome == row['Nome do Projeto']), await Funcionario.find_one(Funcionario.email == row['Email Responsável'])
-            if not projeto: erros.append(f"Linha {index + 2}: Projeto '{row['Nome do Projeto']}' não encontrado."); continue
-            if not responsavel: erros.append(f"Linha {index + 2}: Responsável com email '{row['Email Responsável']}' não encontrado."); continue
+
+            # Busca o projeto e o responsável (obrigatórios)
+            projeto = await Projeto.find_one(Projeto.nome == row['Nome do Projeto'])
+            responsavel = await Funcionario.find_one(Funcionario.email == row['Email Responsável'])
+
+            if not projeto:
+                erros.append(f"Linha {index + 2}: Projeto '{row['Nome do Projeto']}' não encontrado.")
+                continue
+            if not responsavel:
+                erros.append(f"Linha {index + 2}: Responsável com email '{row['Email Responsável']}' não encontrado.")
+                continue
+            
+            # Converte 'Concluído' para booleano de forma segura
             concluido_val = row.get('Concluído', False)
-            concluido = str(concluido_val).strip().lower() in ['true', '1', 'sim', 'yes', 'verdadeiro'] if isinstance(concluido_val, str) else bool(concluido_val)
-            tarefa_data = TarefaCreate(**row.to_dict(), projeto_id=str(projeto.id), responsavel_id=str(responsavel.id), prazo=pd.to_datetime(row['Prazo']).date(), concluido=concluido)
-            tarefa = Tarefa(**tarefa_data.dict(exclude={"projeto_id", "responsavel_id"}), projeto=projeto, responsavel=responsavel)
+            if isinstance(concluido_val, str):
+                concluido = concluido_val.strip().lower() in ['true', '1', 'sim', 'yes', 'verdadeiro']
+            else:
+                concluido = bool(concluido_val)
+
+            # Cria a tarefa com os dados do Excel
+            tarefa_data = TarefaCreate(
+                nome=row['Nome da Tarefa'],
+                projeto_id=str(projeto.id),
+                responsavel_id=str(responsavel.id),
+                prazo=pd.to_datetime(row['Prazo']).date(),
+                descricao=row.get('Descrição'),
+                prioridade=row.get('Prioridade', PrioridadeTarefa.MEDIA),
+                status=row.get('Status', StatusTarefa.NAO_INICIADA),
+                # Novos campos (usando .get para serem opcionais)
+                numero=str(row.get('Número')) if pd.notna(row.get('Número')) else None,
+                classificacao=row.get('Classificação'),
+                fase=row.get('Fase'),
+                condicao=row.get('Condição'),
+                documento_referencia=row.get('Documento de Referência'),
+                concluido=concluido
+            )
+            
+            tarefa = Tarefa(
+                **tarefa_data.dict(exclude={"projeto_id", "responsavel_id"}),
+                projeto=projeto,
+                responsavel=responsavel
+            )
             await tarefa.insert()
             tarefas_criadas += 1
+
         except Exception as e:
             erros.append(f"Linha {index + 2}: Erro ao processar - {e}")
-    return {"message": "Importação concluída.", "tarefas_criadas": tarefas_criadas, "erros": erros}
+
+    return {
+        "message": "Importação concluída.",
+        "tarefas_criadas": tarefas_criadas,
+        "erros": erros
+    }
