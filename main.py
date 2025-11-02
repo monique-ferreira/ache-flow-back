@@ -64,7 +64,7 @@ async def obter_resposta_ia(pergunta: str, current_user: Funcionario) -> AIRespo
     tarefas_pendentes = await Tarefa.find(
         Tarefa.responsavel.id == current_user.id,
         Tarefa.status != StatusTarefa.CONCLUIDA
-    ).sort(+Tarefa.prazo).to_list()
+    ).sort(+Tarefa.data_fim).to_list()
     
     # Buscar todos os funcionários para dar contexto geral à IA
     todos_funcionarios = await Funcionario.find_all().to_list()
@@ -79,7 +79,7 @@ async def obter_resposta_ia(pergunta: str, current_user: Funcionario) -> AIRespo
     contexto_formatado += "\n\nTarefas Pendentes:\n"
     if tarefas_pendentes:
         contexto_formatado += "\n".join(
-            [f"- Título: '{t.nome}', Status: '{t.status.value}', Prazo: {t.prazo.strftime('%d/%m/%Y')}" for t in tarefas_pendentes]
+            [f"- Título: '{t.nome}', Status: '{t.status.value}', data_fim: {t.data_fim.strftime('%d/%m/%Y')}" for t in tarefas_pendentes]
         )
     else:
         contexto_formatado += "Nenhuma tarefa pendente."
@@ -259,7 +259,7 @@ async def listar_tarefas_filtradas(
         if not ids_funcionarios: return []
         query_conditions.append(operators.In(Tarefa.responsavel.id, ids_funcionarios))
     sort_expression = []
-    if urgencia: sort_expression.extend([("prazo", 1), ("prioridade", -1)])
+    if urgencia: sort_expression.extend([("data_fim", 1), ("prioridade", -1)])
     tarefas = await Tarefa.find(*query_conditions, fetch_links=True).sort(*sort_expression).to_list()
     return tarefas
 
@@ -351,7 +351,7 @@ async def exportar_tarefas_excel(current_user: Funcionario = Depends(auth.get_us
     tarefas = await Tarefa.find_all(fetch_links=True).to_list()
     if not tarefas:
         raise HTTPException(status_code=404, detail="Nenhuma tarefa encontrada para exportar.")
-    tarefas_data = [{"ID da Tarefa": str(t.id), "Nome da Tarefa": t.nome, "Descrição": t.descricao, "Prioridade": t.prioridade.value, "Status": t.status.value, "Prazo": t.prazo.isoformat(), "Projeto": t.projeto.nome if t.projeto else None, "Responsável": f"{t.responsavel.nome} {t.responsavel.sobrenome}" if t.responsavel else None, "Email Responsável": t.responsavel.email if t.responsavel else None, "Número": t.numero, "Classificação": t.classificacao, "Fase": t.fase, "Condição": t.condicao, "Documento de Referência": t.documento_referencia, "Concluído": t.concluido} for t in tarefas]
+    tarefas_data = [{"ID da Tarefa": str(t.id), "Nome da Tarefa": t.nome, "Descrição": t.descricao, "Prioridade": t.prioridade.value, "Status": t.status.value, "data_fim": t.data_fim.isoformat(), "Projeto": t.projeto.nome if t.projeto else None, "Responsável": f"{t.responsavel.nome} {t.responsavel.sobrenome}" if t.responsavel else None, "Email Responsável": t.responsavel.email if t.responsavel else None, "Número": t.numero, "Classificação": t.classificacao, "Fase": t.fase, "Condição": t.condicao, "Documento de Referência": t.documento_referencia, "Concluído": t.concluido} for t in tarefas]
     df = pd.DataFrame(tarefas_data)
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -372,7 +372,7 @@ async def importar_tarefas_excel(file: UploadFile = File(...), current_user: Fun
     tarefas_criadas, erros = 0, []
     for index, row in df.iterrows():
         try:
-            if not all(k in row and pd.notna(row[k]) for k in ['Nome da Tarefa', 'Prazo', 'Nome do Projeto', 'Email Responsável']):
+            if not all(k in row and pd.notna(row[k]) for k in ['Nome da Tarefa', 'data_fim', 'Nome do Projeto', 'Email Responsável']):
                 erros.append(f"Linha {index + 2}: Faltam colunas obrigatórias ou elas estão vazias.")
                 continue
             projeto, responsavel = await Projeto.find_one(Projeto.nome == row['Nome do Projeto']), await Funcionario.find_one(Funcionario.email == row['Email Responsável'])
@@ -380,7 +380,7 @@ async def importar_tarefas_excel(file: UploadFile = File(...), current_user: Fun
             if not responsavel: erros.append(f"Linha {index + 2}: Responsável com email '{row['Email Responsável']}' não encontrado."); continue
             concluido_val = row.get('Concluído', False)
             concluido = str(concluido_val).strip().lower() in ['true', '1', 'sim', 'yes', 'verdadeiro'] if isinstance(concluido_val, str) else bool(concluido_val)
-            tarefa_data = TarefaCreate(**row.to_dict(), projeto_id=str(projeto.id), responsavel_id=str(responsavel.id), prazo=pd.to_datetime(row['Prazo']).date(), concluido=concluido)
+            tarefa_data = TarefaCreate(**row.to_dict(), projeto_id=str(projeto.id), responsavel_id=str(responsavel.id), data_fim=pd.to_datetime(row['data_fim']).date(), concluido=concluido)
             tarefa = Tarefa(**tarefa_data.dict(exclude={"projeto_id", "responsavel_id"}), projeto=projeto, responsavel=responsavel)
             await tarefa.insert()
             tarefas_criadas += 1
