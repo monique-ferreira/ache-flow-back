@@ -13,9 +13,9 @@ from models import Funcionario
 load_dotenv()
 
 # --- Configurações de Segurança ---
-SECRET_KEY = os.getenv("SECRET_KEY")
+SECRET_KEY = os.getenv("SECRET_KEY", "uma-chave-secreta-muito-dificil-de-adivinhar-012345")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # Fail-fast se não houver SECRET_KEY (evita 500 silencioso)
 if not SECRET_KEY:
