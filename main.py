@@ -14,29 +14,25 @@ import io
 
 # Importa a lógica de autenticação, IA e os modelos
 import auth
-from ia_generativa import inicializar_ia, gerar_resposta_ia
 from database import db
 from models import (
     Funcionario, Projeto, Tarefa, Calendario, Token,
     FuncionarioCreate, ProjetoCreate, TarefaCreate, CalendarioCreate,
     FuncionarioUpdate, ProjetoUpdate, TarefaUpdate, CalendarioUpdate,
     StatusTarefa, PrioridadeTarefa, TokenData,
-    ChatRequest, AIResponse
 )
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Inicializa a conexão com o banco de dados
     await db.initialize()
-    # Inicializa o modelo de IA (apenas uma vez)
-    inicializar_ia()
     yield
 
 app = FastAPI(
     lifespan=lifespan,
     title="API de Gerenciamento de Projetos e Tarefas",
     description="API com CRUD completo, autenticação e IA Generativa.",
-    version="8.0.0" # IA com contexto global de funcionários
+    version="9.0.0" # IA com contexto global de funcionários
 )
 
 ALLOWED_ORIGINS = [
@@ -54,57 +50,6 @@ app.add_middleware(
     allow_headers=["*"],                          # incl. Authorization
 )
 
-# --- LÓGICA CENTRAL DA IA ---
-async def obter_resposta_ia(pergunta: str, current_user: Funcionario) -> AIResponse:
-    nome_usuario = current_user.nome
-
-    # 1. Coletar TODO o contexto relevante
-    # Dados do usuário logado
-    projetos_usuario = await Projeto.find(Projeto.responsavel.id == current_user.id).to_list()
-    tarefas_pendentes = await Tarefa.find(
-        Tarefa.responsavel.id == current_user.id,
-        Tarefa.status != StatusTarefa.CONCLUIDA
-    ).sort(+Tarefa.prazo).to_list()
-    
-    # Buscar todos os funcionários para dar contexto geral à IA
-    todos_funcionarios = await Funcionario.find_all().to_list()
-
-    # 2. Formatar o contexto para a IA
-    contexto_formatado = f"**Dados do usuário logado ({nome_usuario}):**\n"
-    if projetos_usuario:
-        contexto_formatado += "Projetos sob sua responsabilidade:\n" + "\n".join([f"- {p.nome}" for p in projetos_usuario])
-    else:
-        contexto_formatado += "Nenhum projeto encontrado.\n"
-
-    contexto_formatado += "\n\nTarefas Pendentes:\n"
-    if tarefas_pendentes:
-        contexto_formatado += "\n".join(
-            [f"- Título: '{t.nome}', Status: '{t.status.value}', Prazo: {t.prazo.strftime('%d/%m/%Y')}" for t in tarefas_pendentes]
-        )
-    else:
-        contexto_formatado += "Nenhuma tarefa pendente."
-
-    contexto_formatado += f"\n\n**Lista de todos os funcionários na empresa:**\n"
-    if todos_funcionarios:
-        contexto_formatado += "\n".join(
-            [f"- Nome: {f.nome} {f.sobrenome}, Cargo: {f.cargo or 'Não informado'}, Departamento: {f.departamento or 'Não informado'}" for f in todos_funcionarios]
-        )
-    else:
-        contexto_formatado += "Nenhum funcionário cadastrado."
-
-    # 3. Chamar a IA com o contexto completo e a pergunta original
-    texto_gerado_pela_ia = await gerar_resposta_ia(
-        contexto=contexto_formatado,
-        pergunta=pergunta,
-        nome_usuario=nome_usuario
-    )
-
-    return AIResponse(
-        tipo_resposta="TEXTO",
-        conteudo_texto=texto_gerado_pela_ia,
-        dados=None
-    )
-
 # --- ENDPOINT DE AUTENTICAÇÃO ---
 @app.post("/token", response_model=Token, tags=["Autenticação"])
 async def login_para_obter_token(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -119,14 +64,6 @@ async def login_para_obter_token(form_data: OAuth2PasswordRequestForm = Depends(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email ou senha incorretos")
     token_acesso = auth.criar_token_acesso(data={"sub": funcionario.email, "id": str(funcionario.id)})
     return {"access_token": token_acesso, "token_type": "bearer", "id": str(funcionario.id)}
-
-# --- ENDPOINT DE IA GENERATIVA ---
-@app.post("/ai/chat", response_model=AIResponse, tags=["IA Generativa"], summary="Processa uma pergunta do usuário usando IA Generativa")
-async def processar_chat_ia(
-    chat_request: ChatRequest,
-    current_user: Funcionario = Depends(auth.get_usuario_logado)
-):
-    return await obter_resposta_ia(chat_request.pergunta, current_user)
 
 # --- CRUD Completo: Funcionários ---
 @app.post("/funcionarios", response_model=Funcionario, tags=["Funcionários"], summary="Criar um novo funcionário (Registro)")
@@ -387,33 +324,3 @@ async def importar_tarefas_excel(file: UploadFile = File(...), current_user: Fun
         except Exception as e:
             erros.append(f"Linha {index + 2}: Erro ao processar - {e}")
     return {"message": "Importação concluída.", "tarefas_criadas": tarefas_criadas, "erros": erros}
-
-# --- Webhook ---
-@app.post("/webhook", tags=["Dialogflow"])
-async def dialogflow_webhook(request: Request):
-    payload = await request.json()
-    pergunta = payload.get("text")
-    if not pergunta:
-        pergunta = payload.get("sessionInfo", {}).get("parameters", {}).get("pergunta", "pergunta não encontrada")
-    token = payload.get("sessionInfo", {}).get("parameters", {}).get("token")
-    usuario_logado = None
-    if token:
-        try:
-            payload_token = jwt.decode(token, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
-            email = payload_token.get("sub")
-            if email:
-                usuario_logado = await Funcionario.find_one(Funcionario.email == email)
-        except JWTError:
-            pass
-    if not usuario_logado:
-        return {"fulfillment_response": {"messages": [{"text": {"text": ["Sessão inválida. Por favor, faça login novamente."]}}]}}
-    resposta_ia = await obter_resposta_ia(pergunta, usuario_logado)
-    response_json = {
-        "fulfillment_response": {
-            "messages": [
-                {"text": {"text": [resposta_ia.conteudo_texto]}},
-                {"payload": resposta_ia.dict()}
-            ]
-        }
-    }
-    return response_json

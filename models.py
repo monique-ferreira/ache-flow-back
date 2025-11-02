@@ -147,15 +147,3 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     email: Optional[str] = None
-
-class ChatRequest(BaseModel):
-    pergunta: str
-
-# --- MODELO DE RESPOSTA PADRONIZADO PARA A IA ---
-class AIResponse(BaseModel):
-    """
-    Define uma estrutura de resposta padronizada para qualquer interação com a IA.
-    """
-    tipo_resposta: str
-    conteudo_texto: str
-    dados: Optional[Dict[str, Any]] = None
