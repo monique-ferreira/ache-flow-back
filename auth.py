@@ -1,58 +1,47 @@
 import os
 from datetime import datetime, timedelta
 from typing import Optional
-
-from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import jwt
+from jose import JWTError, jwt
 from passlib.context import CryptContext
+from dotenv import load_dotenv
 
 from models import Funcionario
 
 load_dotenv()
 
 # --- Configurações de Segurança ---
-SECRET_KEY = os.getenv("SECRET_KEY", "uma-chave-secreta-muito-dificil-de-adivinhar-012345")
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
-# Fail-fast se não houver SECRET_KEY (evita 500 silencioso)
-if not SECRET_KEY:
-    raise RuntimeError("SECRET_KEY não definida no ambiente. Defina SECRET_KEY nas variáveis do serviço.")
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+# --- Hashing de Senha ---
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+def verificar_senha(senha_plana: str, senha_hashed: str) -> bool:
+    """Verifica se a senha fornecida corresponde ao hash armazenado."""
+    return pwd_context.verify(senha_plana, senha_hashed)
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+def gerar_hash_senha(senha: str) -> str:
+    """Gera o hash de uma senha."""
+    return pwd_context.hash(senha)
 
+# --- Gerenciamento de Token JWT ---
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+def criar_token_acesso(data: dict):
+    """Cria um novo token de acesso JWT."""
+    para_codificar = data.copy()
+    expira_em = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    para_codificar.update({"exp": expira_em})
+    token_jwt_codificado = jwt.encode(para_codificar, SECRET_KEY, algorithm=ALGORITHM)
+    return token_jwt_codificado
 
-
-async def authenticate_user(email: str, password: str) -> Optional[Funcionario]:
-    usuario = await Funcionario.find_one(Funcionario.email == email)
-    if not usuario:
-        return None
-    if not verify_password(password, usuario.senha):
-        return None
-    return usuario
-
-
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-
+# --- Dependência para Obter Usuário Logado ---
 async def get_usuario_logado(token: str = Depends(oauth2_scheme)) -> Funcionario:
-    """Dependency para rotas protegidas. Retorna o Funcionario autenticado.
-    Em caso de falha, levanta HTTP 401 (evita 500).
+    """
+    Dependência para FastAPI: decodifica o token, valida e retorna o usuário do banco de dados.
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -61,14 +50,14 @@ async def get_usuario_logado(token: str = Depends(oauth2_scheme)) -> Funcionario
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: Optional[str] = payload.get("sub")
-        if not email:
+        email: str = payload.get("sub")
+        if email is None:
             raise credentials_exception
-    except Exception:
-        # Captura QUALQUER erro (chave ausente, token malformado, expiração, etc.)
+    except JWTError:
         raise credentials_exception
-
+    
     funcionario = await Funcionario.find_one(Funcionario.email == email)
-    if not funcionario:
+    if funcionario is None:
         raise credentials_exception
+        
     return funcionario

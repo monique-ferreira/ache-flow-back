@@ -1,6 +1,7 @@
+# models.py
 from datetime import datetime, date
 from typing import Optional, List, Any, Dict
-from beanie import Document, Link, PydanticObjectId
+from beanie import Document, Link
 from pydantic import BaseModel, EmailStr, Field
 from enum import Enum
 
@@ -17,7 +18,7 @@ class PrioridadeTarefa(str, Enum):
 
 class Funcionario(Document):
     nome: str
-    sobrenome: str
+    sobrenome: Optional[str] = None
     email: EmailStr
     senha: str
     cargo: Optional[str] = None
@@ -102,7 +103,7 @@ class CalendarioUpdate(BaseModel):
 # --- Models para Create ---
 class FuncionarioCreate(BaseModel):
     nome: str
-    sobrenome: str
+    sobrenome: Optional[str] = None
     email: EmailStr
     senha: str
     cargo: Optional[str] = None
@@ -142,6 +143,7 @@ class CalendarioCreate(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+    id: Optional[str] = None
 
 class TokenData(BaseModel):
     email: Optional[str] = None
@@ -149,71 +151,11 @@ class TokenData(BaseModel):
 class ChatRequest(BaseModel):
     pergunta: str
 
+# --- MODELO DE RESPOSTA PADRONIZADO PARA A IA ---
 class AIResponse(BaseModel):
+    """
+    Define uma estrutura de resposta padronizada para qualquer interação com a IA.
+    """
     tipo_resposta: str
     conteudo_texto: str
     dados: Optional[Dict[str, Any]] = None
-
-class FuncionarioOut(BaseModel):
-    id: PydanticObjectId = Field(..., alias="_id")
-    nome: str
-    sobrenome: str
-    email: EmailStr
-    cargo: Optional[str] = None
-    departamento: Optional[str] = None
-    fotoPerfil: Optional[str] = None
-    dataCadastro: datetime
-
-    class Config:
-        from_attributes = True
-        populate_by_name = True
-        arbitrary_types_allowed = True
-
-class ProjetoOut(BaseModel):
-    id: PydanticObjectId = Field(..., alias="_id")
-    nome: str
-    descricao: Optional[str] = None
-    categoria: Optional[str] = None
-    situacao: str
-    prazo: date
-    responsavel: FuncionarioOut # <--- Resposta populada
-
-    class Config:
-        from_attributes = True
-        populate_by_name = True
-        arbitrary_types_allowed = True
-
-class TarefaOut(BaseModel):
-    id: PydanticObjectId = Field(..., alias="_id")
-    nome: str
-    descricao: Optional[str] = None
-    prioridade: PrioridadeTarefa
-    status: StatusTarefa
-    dataCriacao: datetime
-    dataConclusao: Optional[date] = None
-    prazo: date
-    projeto: ProjetoOut       # <--- Resposta populada
-    responsavel: FuncionarioOut # <--- Resposta populada
-    numero: Optional[str] = None
-    classificacao: Optional[str] = None
-    fase: Optional[str] = None
-    condicao: Optional[str] = None
-    documento_referencia: Optional[str] = None
-    concluido: Optional[bool] = False
-
-    class Config:
-        from_attributes = True
-        populate_by_name = True
-        arbitrary_types_allowed = True
-
-class CalendarioOut(BaseModel):
-    id: PydanticObjectId = Field(..., alias="_id")
-    tipoEvento: str
-    data_hora_evento: datetime
-    projeto: Optional[ProjetoOut] = None # <--- Resposta populada
-    tarefa: Optional[TarefaOut] = None  # <--- Resposta populada
-
-    class Config:
-        from_attributes = True
-        populate_by_name = True
-        arbitrary_types_allowed = True
