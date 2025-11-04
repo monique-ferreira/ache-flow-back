@@ -93,7 +93,14 @@ class TarefaUpdate(BaseModel):
     status: Optional[StatusTarefa] = None
     prazo: Optional[date] = None
     responsavel_id: Optional[str] = None
-
+    projeto_id: Optional[str] = None  # <-- Adicionado
+    numero: Optional[str] = None  # <-- Adicionado
+    classificacao: Optional[str] = None  # <-- Adicionado
+    fase: Optional[str] = None  # <-- Adicionado
+    condicao: Optional[str] = None  # <-- Adicionado
+    documento_referencia: Optional[str] = None  # <-- Adicionado
+    concluido: Optional[bool] = None  # <-- Adicionado
+    
 class CalendarioUpdate(BaseModel):
     tipoEvento: Optional[str] = None
     data_hora_evento: Optional[datetime] = None

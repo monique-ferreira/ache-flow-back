@@ -207,21 +207,38 @@ async def obter_tarefa(id: PydanticObjectId, current_user: Funcionario = Depends
         raise HTTPException(status_code=404, detail="Tarefa não encontrada.")
     return tarefa
 
+# main.py (sugestão de ajuste para `atualizar_tarefa`)
+
 @app.put("/tarefas/{id}", response_model=Tarefa, tags=["Tarefas"], summary="Atualizar uma tarefa")
 async def atualizar_tarefa(id: PydanticObjectId, update_data: TarefaUpdate, current_user: Funcionario = Depends(auth.get_usuario_logado)):
     tarefa = await Tarefa.get(id, fetch_links=True)
     if not tarefa:
         raise HTTPException(status_code=404, detail="Tarefa não encontrada.")
+    
     update_data_dict = update_data.dict(exclude_unset=True)
+
+    # Lógica para atualizar responsável (você já tem)
     if "responsavel_id" in update_data_dict:
         novo_responsavel = await Funcionario.get(PydanticObjectId(update_data_dict["responsavel_id"]))
         if not novo_responsavel: raise HTTPException(status_code=404, detail="Novo funcionário responsável não encontrado.")
         tarefa.responsavel = novo_responsavel
         del update_data_dict["responsavel_id"]
+
+    # Lógica para atualizar o projeto (novo)
+    if "projeto_id" in update_data_dict:
+        novo_projeto = await Projeto.get(PydanticObjectId(update_data_dict["projeto_id"]))
+        if not novo_projeto: raise HTTPException(status_code=404, detail="Novo projeto não encontrado.")
+        tarefa.projeto = novo_projeto
+        del update_data_dict["projeto_id"]
+
+    # Lógica do status (você já tem)
     if "status" in update_data_dict and update_data_dict["status"] == StatusTarefa.CONCLUIDA:
         tarefa.dataConclusao = date.today()
+
+    # Atualiza os campos restantes (agora incluindo numero, fase, etc.)
     for key, value in update_data_dict.items():
         setattr(tarefa, key, value)
+    
     await tarefa.save()
     return await Tarefa.get(id, fetch_links=True)
 
