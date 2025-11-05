@@ -85,7 +85,7 @@ async def listar_funcionarios(current_user: Funcionario = Depends(auth.get_usuar
     coll = db.client.get_default_database().get_collection("funcionarios")
     docs = await coll.find(
         {},
-        {"nome": 1, "sobrenome": 1, "email": 1, "cargo": 1, "departamento": 1, "fotoPerfil": 1, "dataCadastro": 1}
+        {"nome": 1, "sobrenome": 1, "email": 1, "cargo": 1, "departamento": 1, "dataCadastro": 1}
     ).to_list(length=None)
 
     safe = []

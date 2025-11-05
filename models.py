@@ -23,7 +23,6 @@ class Funcionario(Document):
     senha: str
     cargo: Optional[str] = None
     departamento: Optional[str] = None
-    fotoPerfil: Optional[str] = None
     dataCadastro: datetime = Field(default_factory=datetime.now)
 
     class Settings:
@@ -76,7 +75,6 @@ class FuncionarioUpdate(BaseModel):
     email: Optional[EmailStr] = None
     cargo: Optional[str] = None
     departamento: Optional[str] = None
-    fotoPerfil: Optional[str] = None
 
 class ProjetoUpdate(BaseModel):
     nome: Optional[str] = None
@@ -115,7 +113,6 @@ class FuncionarioCreate(BaseModel):
     senha: str
     cargo: Optional[str] = None
     departamento: Optional[str] = None
-    fotoPerfil: Optional[str] = None
 
 class ProjetoCreate(BaseModel):
     nome: str
