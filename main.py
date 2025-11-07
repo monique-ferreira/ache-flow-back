@@ -164,6 +164,7 @@ async def deletar_projeto(id: PydanticObjectId, current_user: Funcionario = Depe
     projeto = await Projeto.get(id)
     if not projeto:
         raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+    await Tarefa.find(Tarefa.projeto.id == projeto.id).delete()
     await projeto.delete()
     return None
 
