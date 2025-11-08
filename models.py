@@ -138,6 +138,7 @@ class TarefaCreate(BaseModel):
     condicao: Optional[str] = None
     documento_referencia: Optional[str] = None
     concluido: Optional[bool] = False
+    percentual_concluido: Optional[float] = None
 
 class CalendarioCreate(BaseModel):
     tipoEvento: str
