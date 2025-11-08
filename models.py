@@ -55,6 +55,7 @@ class Tarefa(Document):
     condicao: Optional[str] = None
     documento_referencia: Optional[str] = None
     concluido: Optional[bool] = False
+    percentual_concluido: Optional[float] = None
 
     class Settings:
         name = "tarefas"
@@ -98,6 +99,7 @@ class TarefaUpdate(BaseModel):
     condicao: Optional[str] = None  # <-- Adicionado
     documento_referencia: Optional[str] = None  # <-- Adicionado
     concluido: Optional[bool] = None  # <-- Adicionado
+    percentual_concluido: Optional[float] = None  # <-- Adicionado
     
 class CalendarioUpdate(BaseModel):
     tipoEvento: Optional[str] = None
